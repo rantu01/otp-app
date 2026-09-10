@@ -64,11 +64,11 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQ_OVERLAY = 9001;
     private static final int REQ_NOTIF = 9002;
 
-    private final OtpServer.OtpListener autoOtpListener = (email, code) ->
-            main.post(() -> onAutoOtp(email, code));
-
     private final ExecutorService net = Executors.newCachedThreadPool();
     private final Handler main = new Handler(Looper.getMainLooper());
+
+    private final OtpServer.OtpListener autoOtpListener = (email, code) ->
+            main.post(() -> onAutoOtp(email, code));
 
     // server card
     private TextView serverStatus;
