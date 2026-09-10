@@ -245,7 +245,7 @@ public class FloatingService extends Service {
 
         pEmail = new TextView(this);
         pEmail.setGravity(Gravity.CENTER);
-        pEmail.setTextStyle(android.graphics.Typeface.BOLD);
+        pEmail.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         pEmail.setTextColor(getColor(R.color.accent_blue));
         pEmail.setVisibility(View.GONE);
         card.addView(pEmail);
@@ -266,7 +266,7 @@ public class FloatingService extends Service {
         pCode = new TextView(this);
         pCode.setGravity(Gravity.CENTER);
         pCode.setTextSize(22);
-        pCode.setTextStyle(android.graphics.Typeface.BOLD);
+        pCode.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         pCode.setTextColor(getColor(R.color.otp_green));
         pCode.setText(latestCode.isEmpty() ? "------" : latestCode);
         card.addView(pCode);
@@ -301,7 +301,7 @@ public class FloatingService extends Service {
         pGenName = actionButton("Generate Name");
         pName = new TextView(this);
         pName.setGravity(Gravity.CENTER);
-        pName.setTextStyle(android.graphics.Typeface.BOLD);
+        pName.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         pName.setTextColor(getColor(R.color.accent_blue));
         pName.setVisibility(View.GONE);
         Button pCopyName = actionButton("Copy Name");
@@ -467,7 +467,7 @@ public class FloatingService extends Service {
         TextView tv = new TextView(this);
         tv.setText(text);
         tv.setTextSize(sp);
-        tv.setTextStyle(android.graphics.Typeface.BOLD);
+        tv.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         tv.setGravity(Gravity.CENTER);
         tv.setTextColor(getColor(R.color.title_text));
         tv.setPadding(0, dp(8), 0, dp(4));
@@ -478,7 +478,7 @@ public class FloatingService extends Service {
         TextView tv = new TextView(this);
         tv.setText(text);
         tv.setTextSize(12);
-        tv.setTextStyle(android.graphics.Typeface.BOLD);
+        tv.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         tv.setTextColor(getColor(R.color.title_text));
         return tv;
     }
