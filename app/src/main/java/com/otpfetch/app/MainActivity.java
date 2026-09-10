@@ -23,6 +23,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 import org.json.JSONObject;
 
@@ -85,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
 
     // name tab
     private RadioGroup genderGroup;
-    private Button genNameBtn, copyNameBtn;
+    private Button genNameBtn, copyNameBtn, copyNameSplitBtn;
     private LinearLayout nameContainer;
     private TextView generatedName;
     private TextView nameStatus;
@@ -150,6 +151,7 @@ public class MainActivity extends AppCompatActivity {
         genderGroup = findViewById(R.id.genderGroup);
         genNameBtn = findViewById(R.id.genNameBtn);
         copyNameBtn = findViewById(R.id.copyNameBtn);
+        copyNameSplitBtn = findViewById(R.id.copyNameSplitBtn);
         nameContainer = findViewById(R.id.nameContainer);
         generatedName = findViewById(R.id.generatedName);
         nameStatus = findViewById(R.id.nameStatus);
@@ -204,7 +206,7 @@ public class MainActivity extends AppCompatActivity {
                 ? "● Server RUNNING — http://127.0.0.1:3000  (watched: "
                 + OtpServer.getInstance().watchedCount() + ")"
                 : "○ Server STOPPED");
-        serverStatus.setTextColor(running ? 0xFF1E8E3E : 0xFFB00020);
+        serverStatus.setTextColor(ContextCompat.getColor(this, running ? R.color.success : R.color.error));
         serverToggleBtn.setText(running ? "Stop Server" : "Start Server");
         floatingBtn.setText(FloatingService.isRunning() ? "Disable Floating Widget" : "Enable Floating Widget");
     }
@@ -358,7 +360,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void showStatus(String msg, boolean isError) {
         statusDiv.setText(msg);
-        statusDiv.setTextColor(isError ? 0xFFB00020 : 0xFF1E8E3E);
+        statusDiv.setTextColor(ContextCompat.getColor(this, isError ? R.color.error : R.color.success));
     }
 
     // ---------------- Name tab (port of popup.js) ----------------
@@ -373,11 +375,15 @@ public class MainActivity extends AppCompatActivity {
             generatedName.setText(name);
             nameContainer.setVisibility(View.VISIBLE);
             nameStatus.setText("Generated!");
-            nameStatus.setTextColor(0xFF1E8E3E);
+            nameStatus.setTextColor(ContextCompat.getColor(this, R.color.success));
         });
         copyNameBtn.setOnClickListener(v -> {
             copyToClipboard(generatedName.getText().toString());
             flash(copyNameBtn, "Copied!");
+        });
+        copyNameSplitBtn.setOnClickListener(v -> {
+            copyToClipboard(OtpHelper.splitCopyFormat(generatedName.getText().toString()));
+            flash(copyNameSplitBtn, "Copied!");
         });
     }
 

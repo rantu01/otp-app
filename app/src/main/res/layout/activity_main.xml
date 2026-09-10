@@ -2,7 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F4F6F9"
+    android:background="@color/screen_bg"
     android:fillViewport="true">
 
     <LinearLayout
@@ -16,7 +16,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="rantuOTP"
-            android:textColor="#333333"
+            android:textColor="@color/title_text"
             android:textSize="18sp"
             android:textStyle="bold" />
 
@@ -25,7 +25,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:background="#FFFFFF"
+            android:background="@color/card_bg"
             android:elevation="2dp"
             android:orientation="vertical"
             android:padding="10dp">
@@ -34,6 +34,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Bridge Server (:3000)"
+                android:textColor="@color/title_text"
                 android:textStyle="bold" />
 
             <TextView
@@ -57,7 +58,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="90dp"
                 android:layout_marginTop="6dp"
-                android:background="#101418">
+                android:background="@color/log_bg">
 
                 <TextView
                     android:id="@+id/serverLog"
@@ -65,7 +66,7 @@
                     android:layout_height="wrap_content"
                     android:padding="6dp"
                     android:text="Server log...\n"
-                    android:textColor="#7CFC98"
+                    android:textColor="@color/log_text"
                     android:textSize="10sp"
                     android:typeface="monospace" />
             </ScrollView>
@@ -101,7 +102,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="#FFFFFF"
+            android:background="@color/card_bg"
             android:elevation="2dp"
             android:orientation="vertical"
             android:padding="10dp">
@@ -114,6 +115,8 @@
                 android:gravity="top"
                 android:hint="Paste Account Data (Email|RefreshToken|ClientId)..."
                 android:inputType="textMultiLine"
+                android:textColor="@color/title_text"
+                android:textColorHint="@color/title_text"
                 android:padding="6dp"
                 android:textSize="11sp" />
 
@@ -122,7 +125,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:background="#EEF5FF"
+                android:background="@color/info_bg"
                 android:orientation="vertical"
                 android:padding="8dp"
                 android:visibility="gone">
@@ -132,7 +135,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center"
-                    android:textColor="#0056B3"
+                    android:textColor="@color/accent_blue"
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
@@ -163,7 +166,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:background="#EEF5FF"
+                android:background="@color/info_bg"
                 android:orientation="vertical"
                 android:padding="8dp"
                 android:visibility="gone">
@@ -173,6 +176,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:text="OTP Code:"
+                    android:textColor="@color/title_text"
                     android:textSize="11sp" />
 
                 <TextView
@@ -181,7 +185,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:text="------"
-                    android:textColor="#28A745"
+                    android:textColor="@color/otp_green"
                     android:textSize="24sp"
                     android:textStyle="bold" />
 
@@ -197,7 +201,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:backgroundTint="#DC3545"
+                android:backgroundTint="@color/danger"
                 android:text="Clear Saved Data" />
         </LinearLayout>
 
@@ -207,7 +211,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="#FFFFFF"
+            android:background="@color/card_bg"
             android:elevation="2dp"
             android:orientation="vertical"
             android:padding="10dp"
@@ -225,21 +229,24 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:checked="true"
-                    android:text="Male" />
+                    android:text="Male"
+                    android:textColor="@color/title_text" />
 
                 <RadioButton
                     android:id="@+id/genderFemale"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Female" />
+                    android:text="Female"
+                    android:textColor="@color/title_text" />
 
                 <RadioButton
                     android:id="@+id/genderBoth"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Random" />
+                    android:text="Random"
+                    android:textColor="@color/title_text" />
             </RadioGroup>
 
             <Button
@@ -254,7 +261,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:background="#EEF5FF"
+                android:background="@color/info_bg"
                 android:orientation="vertical"
                 android:padding="8dp"
                 android:visibility="gone">
@@ -265,7 +272,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:text="---"
-                    android:textColor="#0056B3"
+                    android:textColor="@color/accent_blue"
                     android:textSize="15sp"
                     android:textStyle="bold" />
 
@@ -274,6 +281,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Copy Name" />
+
+                <Button
+                    android:id="@+id/copyNameSplitBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Copy First, Last" />
             </LinearLayout>
 
             <TextView
@@ -299,7 +312,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:layout_marginBottom="16dp"
-            android:backgroundTint="#B00020"
+            android:backgroundTint="@color/exit_red"
             android:text="Exit App" />
 
     </LinearLayout>

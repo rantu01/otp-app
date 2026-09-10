@@ -95,4 +95,15 @@ public final class OtpHelper {
         }
         return first + " " + LAST[r.nextInt(LAST.length)];
     }
+
+    /**
+     * Formats "First Last" as "First, Last" for one-click split copy.
+     * e.g. "Rantu Mondal" -> "Rantu, Mondal". Single words pass through.
+     */
+    public static String splitCopyFormat(String fullName) {
+        if (fullName == null) return "";
+        String[] parts = fullName.trim().split("\\s+");
+        if (parts.length < 2) return fullName.trim();
+        return parts[0] + ", " + parts[parts.length - 1];
+    }
 }

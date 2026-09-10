@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light mode: same look as the original extension popup -->
+    <color name="screen_bg">#F4F6F9</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="title_text">#333333</color>
+    <color name="accent_blue">#0056B3</color>
+    <color name="info_bg">#EEF5FF</color>
+    <color name="otp_green">#1E8E3E</color>
+    <color name="success">#1E8E3E</color>
+    <color name="error">#B00020</color>
+    <color name="danger">#DC3545</color>
+    <color name="exit_red">#B00020</color>
+    <color name="log_bg">#101418</color>
+    <color name="log_text">#7CFC98</color>
+    <color name="bubble_bg">#007BFF</color>
+    <color name="bubble_text">#FFFFFF</color>
+    <color name="popup_dim">#99000000</color>
+</resources>
