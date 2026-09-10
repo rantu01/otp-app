@@ -1,6 +1,16 @@
 package com.otpfetch.app;
 
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.util.Log;
+
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -63,6 +73,10 @@ public class OtpServer {
         void onLog(String line);
     }
 
+    public interface OtpListener {
+        void onOtp(String email, String code);
+    }
+
     private static final OtpServer INSTANCE = new OtpServer();
     public static OtpServer getInstance() { return INSTANCE; }
     private OtpServer() {}
@@ -92,6 +106,29 @@ public class OtpServer {
     private ScheduledExecutorService poller;
     private Thread acceptThread;
     private volatile LogListener logListener;
+    private volatile Context appContext;
+    private final java.util.concurrent.CopyOnWriteArrayList<OtpListener> otpListeners =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final Map<String, String> lastNotifiedCode = new ConcurrentHashMap<>();
+    private static final String OTP_CHANNEL_ID = "otp_auto";
+    private static final int OTP_NOTIF_BASE = 2000;
+
+    public void init(Context ctx) {
+        if (ctx != null) appContext = ctx.getApplicationContext();
+    }
+
+    public void addOtpListener(OtpListener l) {
+        if (l != null) otpListeners.addIfAbsent(l);
+    }
+
+    public void removeOtpListener(OtpListener l) {
+        if (l != null) otpListeners.remove(l);
+    }
+
+    /** Backwards-compatible single-listener setter (adds to the set). */
+    public void setOtpListener(OtpListener l) {
+        if (l != null) otpListeners.addIfAbsent(l);
+    }
 
     public void setLogListener(LogListener l) { this.logListener = l; }
     public boolean isRunning() { return running; }
@@ -166,17 +203,30 @@ public class OtpServer {
         OtpHelper.Account acc = watchedAccounts.get(email);
         if (acc == null) return null;
         try {
-            String token = getAccessToken(acc.email, acc.clientId, acc.refreshToken);
+            String token = getAccessTokenForAccount(acc);
             if (token == null) { watchedAccounts.remove(email); return null; }
             List<GraphMsg> messages = fetchInboxAndJunk(token);
             OtpEntry result = tryExtractOTP(messages, email);
-            if (result != null) log("OTP caught for " + email + ": " + result.code);
+            if (result != null) {
+                log("OTP caught for " + email + ": " + result.code);
+                notifyNewOtp(email, result.code);
+            }
             return result;
         } catch (Exception ignored) {}
         return null;
     }
 
     // ================= token management =================
+
+    /** Client IDs to try when pasted data has no UUID (Type 2) or preferred one fails. */
+    private List<String> clientCandidates(String preferred) {
+        List<String> out = new ArrayList<>();
+        if (preferred != null && !preferred.trim().isEmpty()) out.add(preferred.trim());
+        for (String fb : OtpHelper.FALLBACK_CLIENT_IDS) {
+            if (!out.contains(fb)) out.add(fb);
+        }
+        return out;
+    }
 
     private String refreshAccessToken(String clientId, String refreshToken) {
         HttpsURLConnection conn = null;
@@ -229,31 +279,167 @@ public class OtpServer {
     private final ThreadLocal<TokenEntry> pendingToken = new ThreadLocal<>();
 
     private synchronized String getAccessToken(String email, String clientId, String refreshToken) {
+        return getAccessTokenForAccount(new OtpHelper.Account(email, refreshToken, clientId, ""));
+    }
+
+    /**
+     * Full auth resolution for classic + Type 1 (password/ROPC) + Type 2 (missing clientId).
+     * Order: cache -> refresh with preferred+fallback clientIds -> direct access-token use
+     * -> password (ROPC) with preferred+fallback clientIds.
+     */
+    private synchronized String getAccessTokenForAccount(OtpHelper.Account acc) {
+        String email = acc.email;
         TokenEntry cached = tokenCache.get(email);
         long now = System.currentTimeMillis();
         if (cached != null && cached.expiresAt > now + TOKEN_SAFETY_MARGIN_MS) {
             return cached.accessToken;
         }
-        String latestRefresh = (cached != null && cached.refreshToken != null) ? cached.refreshToken : refreshToken;
-        String token = refreshAccessToken(clientId, latestRefresh);
-        TokenEntry te = pendingToken.get();
-        pendingToken.remove();
-        if (token == null) { tokenCache.remove(email); return null; }
-        if (te == null) {
-            te = new TokenEntry();
-            te.accessToken = token;
-            te.expiresAt = now + 3300 * 1000L;
-            te.refreshToken = latestRefresh;
-            te.clientId = clientId;
+        String latestRefresh = (cached != null && cached.refreshToken != null && !cached.refreshToken.isEmpty())
+                ? cached.refreshToken : acc.refreshToken;
+        String preferredClient = (cached != null && cached.clientId != null && !cached.clientId.isEmpty())
+                ? cached.clientId : acc.clientId;
+
+        // 1) Refresh-token flow (tries preferred clientId, then well-known fallbacks).
+        if (latestRefresh != null && !latestRefresh.isEmpty()) {
+            for (String cid : clientCandidates(preferredClient)) {
+                String token = refreshAccessToken(cid, latestRefresh);
+                TokenEntry te = pendingToken.get();
+                pendingToken.remove();
+                if (token != null) {
+                    if (te == null) {
+                        te = new TokenEntry();
+                        te.accessToken = token;
+                        te.expiresAt = now + 3300 * 1000L;
+                        te.refreshToken = latestRefresh;
+                        te.clientId = cid;
+                    }
+                    updateWatchedToken(email, te);
+                    tokenCache.put(email, te);
+                    log("Token refreshed for " + email);
+                    return token;
+                }
+                // Only spam the log for the first attempt; fallbacks are expected to fail sometimes.
+                if (cid.equals(clientCandidates(preferredClient).get(0))) {
+                    log("Refresh with preferred client failed for " + email + ", trying fallbacks...");
+                }
+            }
+            // 2) The pasted "token" may already be an access token (Type 2 access-token variant).
+            if (validateAccessToken(latestRefresh)) {
+                TokenEntry te = new TokenEntry();
+                te.accessToken = latestRefresh;
+                te.expiresAt = now + 30 * 60 * 1000L;
+                te.refreshToken = latestRefresh;
+                te.clientId = preferredClient == null ? "" : preferredClient;
+                tokenCache.put(email, te);
+                log("Using pasted token directly as access token for " + email);
+                return te.accessToken;
+            }
         }
-        // keep watching with the newest refresh token (Microsoft may rotate it)
+
+        // 3) Password (ROPC) flow for Type 1 lines without a usable refresh token.
+        String pwd = acc.password;
+        if (pwd != null && !pwd.isEmpty()) {
+            for (String cid : clientCandidates(preferredClient)) {
+                String token = authWithPassword(cid, email, pwd);
+                TokenEntry te = pendingToken.get();
+                pendingToken.remove();
+                if (token != null) {
+                    if (te == null) {
+                        te = new TokenEntry();
+                        te.accessToken = token;
+                        te.expiresAt = now + 3300 * 1000L;
+                        te.refreshToken = latestRefresh == null ? "" : latestRefresh;
+                        te.clientId = cid;
+                    }
+                    updateWatchedToken(email, te);
+                    tokenCache.put(email, te);
+                    log("Password auth succeeded for " + email);
+                    return token;
+                }
+            }
+        }
+
+        tokenCache.remove(email);
+        return null;
+    }
+
+    private void updateWatchedToken(String email, TokenEntry te) {
+        // keep watching with the newest refresh token (Microsoft may rotate it),
+        // preserving the password so ROPC retry still works.
         OtpHelper.Account existing = watchedAccounts.get(email);
         if (existing != null && te.refreshToken != null && !te.refreshToken.equals(existing.refreshToken)) {
-            watchedAccounts.put(email, new OtpHelper.Account(email, te.refreshToken, clientId));
+            String cid = te.clientId != null && !te.clientId.isEmpty() ? te.clientId : existing.clientId;
+            watchedAccounts.put(email, new OtpHelper.Account(email, te.refreshToken, cid, existing.password));
         }
-        tokenCache.put(email, te);
-        log("Token refreshed for " + email);
-        return token;
+    }
+
+    /** ROPC: email+password -> access token (for Type 1 lines with password + UUID). */
+    private String authWithPassword(String clientId, String email, String password) {
+        HttpsURLConnection conn = null;
+        try {
+            java.net.URL url = new java.net.URL("https://login.microsoftonline.com/common/oauth2/v2.0/token");
+            conn = (HttpsURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            String body = "client_id=" + URLEncoder.encode(clientId.trim(), "UTF-8")
+                    + "&grant_type=password"
+                    + "&username=" + URLEncoder.encode(email.trim(), "UTF-8")
+                    + "&password=" + URLEncoder.encode(password, "UTF-8")
+                    + "&scope=" + URLEncoder.encode("https://graph.microsoft.com/Mail.Read offline_access openid profile", "UTF-8");
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            conn.setFixedLengthStreamingMode(bytes.length);
+            OutputStream os = conn.getOutputStream();
+            os.write(bytes);
+            os.flush();
+            os.close();
+            int code = conn.getResponseCode();
+            InputStream in = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
+            String resp = readAll(in);
+            if (code >= 200 && code < 300) {
+                JSONObject obj = new JSONObject(resp);
+                if (obj.has("access_token")) {
+                    String newRefresh = obj.optString("refresh_token", "");
+                    long expiresIn = obj.optLong("expires_in", 3300);
+                    TokenEntry te = new TokenEntry();
+                    te.accessToken = obj.getString("access_token");
+                    te.expiresAt = System.currentTimeMillis() + expiresIn * 1000L;
+                    te.refreshToken = newRefresh;
+                    te.clientId = clientId;
+                    pendingToken.set(te);
+                    return te.accessToken;
+                }
+            } else {
+                log("Password auth failed: HTTP " + code);
+            }
+        } catch (Exception e) {
+            log("Password auth failed: " + e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+        return null;
+    }
+
+    /** Checks whether a pasted token works directly as a Graph access token. */
+    private boolean validateAccessToken(String token) {
+        HttpsURLConnection conn = null;
+        try {
+            java.net.URL url = new java.net.URL(
+                    "https://graph.microsoft.com/v1.0/me?$select=id");
+            conn = (HttpsURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(4000);
+            conn.setReadTimeout(4000);
+            conn.setRequestProperty("Authorization", "Bearer " + token);
+            int code = conn.getResponseCode();
+            return code >= 200 && code < 300;
+        } catch (Exception ignored) {
+            return false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     // ================= graph fetching =================
@@ -372,20 +558,37 @@ public class OtpServer {
 
     /** Blocking OTP fetch with the same aggressive retry loop as server.js. */
     public FetchResult fetchOtp(String email, String refreshToken, String clientId) {
+        return fetchOtp(new OtpHelper.Account(email, refreshToken, clientId, ""));
+    }
+
+    /** Full-account fetch (supports password + fallback clientIds). Keeps watching for auto-detect. */
+    public FetchResult fetchOtp(OtpHelper.Account acc) {
+        String email = acc.email;
         log("OTP request: " + email);
         OtpEntry cached = otpCache.get(email);
         if (cached != null && System.currentTimeMillis() - cached.ts < OTP_CACHE_TTL_MS) {
             log("Instant cache hit for " + email + ": " + cached.code);
+            notifyNewOtp(email, cached.code);
             return new FetchResult(true, cached.code, null);
         }
-        watchedAccounts.put(email, new OtpHelper.Account(email, refreshToken, clientId));
+        // Keep watching after this call so re-sent OTPs are auto-detected by the poller.
+        OtpHelper.Account prev = watchedAccounts.get(email);
+        String pwd = acc.password != null && !acc.password.isEmpty() ? acc.password
+                : (prev != null ? prev.password : "");
+        String cid = acc.clientId != null && !acc.clientId.isEmpty() ? acc.clientId
+                : (prev != null ? prev.clientId : "");
+        String tok = acc.refreshToken != null && !acc.refreshToken.isEmpty() ? acc.refreshToken
+                : (prev != null ? prev.refreshToken : "");
+        OtpHelper.Account full = new OtpHelper.Account(email, tok, cid, pwd);
+        watchedAccounts.put(email, full);
 
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             OtpEntry c = otpCache.get(email);
             if (c != null && System.currentTimeMillis() - c.ts < OTP_CACHE_TTL_MS) {
+                notifyNewOtp(email, c.code);
                 return new FetchResult(true, c.code, null);
             }
-            String token = getAccessToken(email, clientId, refreshToken);
+            String token = getAccessTokenForAccount(full);
             if (token == null) {
                 return new FetchResult(false, null, "Token refresh failed. Refresh Token might be dead.");
             }
@@ -393,13 +596,67 @@ public class OtpServer {
             OtpEntry result = tryExtractOTP(messages, email);
             if (result != null) {
                 log("OTP found on attempt " + attempt + ": " + result.code);
+                notifyNewOtp(email, result.code);
                 return new FetchResult(true, result.code, null);
             }
             if (attempt < MAX_RETRIES) {
                 try { Thread.sleep(RETRY_DELAY_MS); } catch (InterruptedException e) { break; }
             }
         }
-        return new FetchResult(false, null, "OTP not arrived yet. Server/email delay.");
+        // Leave the account watched: the background poller keeps watching for re-sent OTPs.
+        return new FetchResult(false, null, "OTP not arrived yet. Watching inbox — new codes will pop up automatically.");
+    }
+
+    // ================= auto-detect fan-out (popup + notification) =================
+
+    private void notifyNewOtp(String email, String code) {
+        if (email == null || code == null || code.isEmpty()) return;
+        String last = lastNotifiedCode.get(email);
+        boolean isNew = !code.equals(last);
+        if (isNew) lastNotifiedCode.put(email, code);
+        // Always refresh the bubble text, even for repeats.
+        try { FloatingService.updateCode(code); } catch (Exception ignored) {}
+        if (!isNew) return; // don't spam notifications/listeners for the same code
+        postOtpNotification(email, code);
+        for (OtpListener l : otpListeners) {
+            try { l.onOtp(email, code); } catch (Exception ignored) {}
+        }
+    }
+
+    private void postOtpNotification(String email, String code) {
+        Context ctx = appContext;
+        if (ctx == null) return;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    // Permission not granted yet; UI listeners still update popups/bubbles.
+                }
+            }
+            NotificationManager nm =
+                    (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel ch = new NotificationChannel(
+                        OTP_CHANNEL_ID, "OTP codes", NotificationManager.IMPORTANCE_HIGH);
+                ch.setDescription("Auto-detected OTP codes");
+                try { nm.createNotificationChannel(ch); } catch (Exception ignored) {}
+            }
+            Intent open = new Intent(ctx, MainActivity.class);
+            open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent pi = PendingIntent.getActivity(ctx, email.hashCode(), open,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, OTP_CHANNEL_ID)
+                    .setContentTitle("OTP Received: " + code)
+                    .setContentText(email + " — tap to view / copy")
+                    .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                    .setAutoCancel(true)
+                    .setContentIntent(pi);
+            nm.notify(OTP_NOTIF_BASE + Math.abs(email.hashCode() % 1000), b.build());
+        } catch (Exception ignored) {}
     }
 
     // ================= minimal HTTP layer =================
@@ -471,14 +728,15 @@ public class OtpServer {
             String email = req.optString("email", "").trim();
             String refreshToken = req.optString("refreshToken", "").trim();
             String clientId = req.optString("clientId", "").trim();
-            if (email.isEmpty() || refreshToken.isEmpty() || clientId.isEmpty()) {
+            String password = req.optString("password", "").trim();
+            if (email.isEmpty() || (refreshToken.isEmpty() && password.isEmpty())) {
                 JSONObject err = new JSONObject();
                 err.put("success", false);
                 err.put("error", "Missing required fields");
                 sendJson(out, 400, err.toString());
                 return;
             }
-            FetchResult r = fetchOtp(email, refreshToken, clientId);
+            FetchResult r = fetchOtp(new OtpHelper.Account(email, refreshToken, clientId, password));
             JSONObject resp = new JSONObject();
             if (r.success) {
                 resp.put("success", true);

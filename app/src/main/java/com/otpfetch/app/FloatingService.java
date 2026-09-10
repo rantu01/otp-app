@@ -81,6 +81,8 @@ public class FloatingService extends Service {
     private final ExecutorService net = Executors.newCachedThreadPool();
     private final Handler main = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
+    private final OtpServer.OtpListener autoOtpListener = (email, code) ->
+            main.post(() -> onAutoOtp(email, code));
 
     public static boolean isRunning() { return instance != null; }
 
@@ -101,9 +103,21 @@ public class FloatingService extends Service {
         super.onCreate();
         instance = this;
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        OtpServer.getInstance().init(getApplicationContext());
+        OtpServer.getInstance().addOtpListener(autoOtpListener);
         createChannel();
         startForeground(NOTIF_ID, buildNotification());
         showBubble();
+    }
+
+    /** Facebook-style: re-sent OTPs auto-open the popup (and update it if already open). */
+    private void onAutoOtp(String email, String code) {
+        updateCode(code);
+        try {
+            if (popupView == null) showPopup();
+            if (pCode != null) pCode.setText(code);
+            if (pStatus != null) popupStatus("New OTP auto-detected for " + email + "!", false);
+        } catch (Exception ignored) {}
     }
 
     private void createChannel() {
@@ -240,6 +254,9 @@ public class FloatingService extends Service {
         pAccount.setMinLines(3);
         pAccount.setTextSize(11);
         pAccount.setTextColor(getColor(R.color.title_text));
+        pAccount.setHintTextColor(getColor(R.color.input_hint));
+        pAccount.setBackgroundColor(getColor(R.color.info_bg));
+        pAccount.setPadding(dp(8), dp(8), dp(8), dp(8));
         pAccount.setText(prefs.getString(KEY_SAVED, ""));
         card.addView(pAccount);
 
@@ -442,12 +459,12 @@ public class FloatingService extends Service {
         if (pGetCode != null) pGetCode.setEnabled(false);
         net.execute(() -> {
             OtpServer.FetchResult r =
-                    OtpServer.getInstance().fetchOtp(acc.email, acc.refreshToken, acc.clientId);
+                    OtpServer.getInstance().fetchOtp(acc);
             main.post(() -> {
                 if (pGetCode != null) pGetCode.setEnabled(true);
                 if (r.success) {
                     updateCode(r.code);
-                    popupStatus("OTP Fetched Successfully!", false);
+                    popupStatus("OTP Fetched Successfully! Watching inbox — new codes pop up automatically.", false);
                 } else {
                     popupStatus(r.error != null ? r.error : "OTP Not Found", true);
                 }
@@ -534,6 +551,7 @@ public class FloatingService extends Service {
 
     @Override
     public void onDestroy() {
+        try { OtpServer.getInstance().removeOtpListener(autoOtpListener); } catch (Exception ignored) {}
         hidePopup();
         net.shutdownNow();
         try {

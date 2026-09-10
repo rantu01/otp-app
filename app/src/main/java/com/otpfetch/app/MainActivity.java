@@ -23,6 +23,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import org.json.JSONObject;
@@ -61,6 +62,10 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREFS = "otp_fetch_prefs";
     private static final String KEY_SAVED = "savedAccountData";
     private static final int REQ_OVERLAY = 9001;
+    private static final int REQ_NOTIF = 9002;
+
+    private final OtpServer.OtpListener autoOtpListener = (email, code) ->
+            main.post(() -> onAutoOtp(email, code));
 
     private final ExecutorService net = Executors.newCachedThreadPool();
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -101,6 +106,9 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        OtpServer.getInstance().init(getApplicationContext());
+        OtpServer.getInstance().addOtpListener(autoOtpListener);
+        requestNotifPermission();
 
         bindViews();
         bindServerCard();
@@ -121,7 +129,33 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         OtpServer.getInstance().setLogListener(null);
+        OtpServer.getInstance().removeOtpListener(autoOtpListener);
         super.onDestroy();
+    }
+
+    private void requestNotifPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this,
+                    android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+            }
+        }
+    }
+
+    /** Facebook-style: re-sent OTPs pop into the UI automatically, no Get Code tap needed. */
+    private void onAutoOtp(String email, String code) {
+        try {
+            String current = "";
+            try { current = OtpHelper.extractEmail(accountDataInput.getText().toString()); }
+            catch (Exception ignored) {}
+            if (!current.isEmpty() && !current.equalsIgnoreCase(email)) return;
+            otpCode.setText(code);
+            resultContainer.setVisibility(View.VISIBLE);
+            showStatus("New OTP auto-detected for " + email + "!", false);
+            FloatingService.updateCode(code);
+        } catch (Exception ignored) {}
     }
 
     // ---------------- view binding ----------------
@@ -321,6 +355,7 @@ public class MainActivity extends AppCompatActivity {
                 req.put("email", acc.email);
                 req.put("refreshToken", acc.refreshToken);
                 req.put("clientId", acc.clientId);
+                req.put("password", acc.password);
                 byte[] bytes = req.toString().getBytes(StandardCharsets.UTF_8);
                 OutputStream os = conn.getOutputStream();
                 os.write(bytes);
@@ -343,7 +378,7 @@ public class MainActivity extends AppCompatActivity {
                     if (ok) {
                         otpCode.setText(code);
                         resultContainer.setVisibility(View.VISIBLE);
-                        showStatus("OTP Fetched Successfully!", false);
+                        showStatus("OTP Fetched Successfully! Watching inbox — new codes pop up automatically.", false);
                         FloatingService.updateCode(code);
                     } else {
                         showStatus(err, true);

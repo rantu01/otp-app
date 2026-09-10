@@ -111,12 +111,13 @@
                 android:id="@+id/accountData"
                 android:layout_width="match_parent"
                 android:layout_height="70dp"
-                android:background="@android:drawable/edit_text"
+                android:background="@color/info_bg"
                 android:gravity="top"
                 android:hint="Paste Account Data (Email|RefreshToken|ClientId)..."
                 android:inputType="textMultiLine"
                 android:textColor="@color/title_text"
-                android:textColorHint="@color/title_text"
+                android:textColorHint="@color/input_hint"
+                android:textCursorDrawable="@null"
                 android:padding="6dp"
                 android:textSize="11sp" />
 

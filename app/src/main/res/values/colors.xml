@@ -16,4 +16,5 @@
     <color name="bubble_bg">#007BFF</color>
     <color name="bubble_text">#FFFFFF</color>
     <color name="popup_dim">#99000000</color>
+    <color name="input_hint">#8A8F98</color>
 </resources>

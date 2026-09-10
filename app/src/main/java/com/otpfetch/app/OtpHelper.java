@@ -20,40 +20,104 @@ public final class OtpHelper {
         public final String email;
         public final String refreshToken;
         public final String clientId;
+        public final String password;
         public Account(String email, String refreshToken, String clientId) {
-            this.email = email;
-            this.refreshToken = refreshToken;
-            this.clientId = clientId;
+            this(email, refreshToken, clientId, "");
+        }
+        public Account(String email, String refreshToken, String clientId, String password) {
+            this.email = email == null ? "" : email;
+            this.refreshToken = refreshToken == null ? "" : refreshToken;
+            this.clientId = clientId == null ? "" : clientId;
+            this.password = password == null ? "" : password;
         }
     }
 
-    /** Parses raw pasted data. Throws IllegalArgumentException on bad format. */
+    private static final Pattern UUID_PATTERN =
+            Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^.+@.+\\..+$");
+
+    private static boolean isEmail(String s) {
+        return s != null && s.contains("@") && EMAIL_PATTERN.matcher(s).matches();
+    }
+
+    private static boolean isUuid(String s) {
+        return s != null && UUID_PATTERN.matcher(s).matches();
+    }
+
+    /** Fallback public client IDs tried when pasted data has no UUID (e.g. Type 2). */
+    public static final String[] FALLBACK_CLIENT_IDS = {
+            "9e5f94bc-e8a4-4e73-b8be-63364c29d753",
+            "d3590ed6-52b3-4102-aeff-aad2292ab01c",
+            "1fec8e78-bce4-4aaf-ab1b-5451cc387264",
+            "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
+    };
+
+    /**
+     * Parses raw pasted data. Supports:
+     *  - Classic: "Email|RefreshToken|ClientId" (any order)
+     *  - Type 1: "email|password|token|UUID|secondary-email" (5 parts; token may be absent)
+     *  - Type 2: "email|password|token" (no UUID, no secondary)
+     *  First e-mail wins (secondary e-mail is ignored), first UUID wins,
+     *  longest long-part wins as the token, first remaining short part is the password.
+     *  Throws IllegalArgumentException on bad format.
+     */
     public static Account parseAccountData(String rawData) {
         if (rawData == null) throw new IllegalArgumentException("Invalid Format! Email, Refresh Token or Client ID missing.");
-        String[] parts = rawData.split("\\|");
-        String email = "", refreshToken = "", clientId = "";
-        for (String p : parts) {
-            String part = p.trim();
-            if (part.contains("@")) {
-                email = part;
-            } else if (part.length() == 36 && part.contains("-")) {
-                clientId = part;
-            } else if (part.length() > 30) {
+        String[] rawParts = rawData.split("\\|");
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        for (String p : rawParts) {
+            String t = p == null ? "" : p.trim();
+            if (!t.isEmpty()) parts.add(t);
+        }
+        String email = "";
+        for (String part : parts) {
+            if (isEmail(part)) { email = part; break; }
+        }
+        String clientId = "";
+        for (String part : parts) {
+            if (isUuid(part)) { clientId = part; break; }
+        }
+        // Legacy heuristic fallback: 36-char dashed part (non-email) counts as clientId.
+        if (clientId.isEmpty()) {
+            for (String part : parts) {
+                if (!isEmail(part) && part.length() == 36 && part.contains("-")) { clientId = part; break; }
+            }
+        }
+        String refreshToken = "";
+        for (String part : parts) {
+            if (isEmail(part)) continue;
+            if (!clientId.isEmpty() && part.equals(clientId)) continue;
+            if (isUuid(part)) continue;
+            if (part.length() > 30 && part.length() > refreshToken.length()) {
                 refreshToken = part;
             }
         }
-        if (email.isEmpty() || refreshToken.isEmpty() || clientId.isEmpty()) {
+        String password = "";
+        for (String part : parts) {
+            if (isEmail(part)) continue;
+            if (!clientId.isEmpty() && part.equals(clientId)) continue;
+            if (!refreshToken.isEmpty() && part.equals(refreshToken)) continue;
+            if (isUuid(part)) continue;
+            if (part.length() > 30) continue; // long non-token leftovers are not passwords
+            if (part.length() >= 4) { password = part; break; }
+        }
+        if (email.isEmpty() || (refreshToken.isEmpty() && password.isEmpty())) {
             throw new IllegalArgumentException("Invalid Format! Email, Refresh Token or Client ID missing.");
         }
-        return new Account(email, refreshToken, clientId);
+        // Password-only flow still needs a clientId (ROPC). Token flow can fall back.
+        if (refreshToken.isEmpty() && clientId.isEmpty()) {
+            throw new IllegalArgumentException("Invalid Format! Email, Refresh Token or Client ID missing.");
+        }
+        return new Account(email, refreshToken, clientId, password);
     }
 
-    /** Extracts just the e-mail (for the e-mail preview box). Returns "" if none. */
+    /** Extracts just the e-mail (first e-mail wins, so secondary e-mails are ignored). Returns "" if none. */
     public static String extractEmail(String rawData) {
         if (rawData == null) return "";
         for (String p : rawData.split("\\|")) {
-            String part = p.trim();
-            if (part.contains("@")) return part;
+            String part = p == null ? "" : p.trim();
+            if (isEmail(part)) return part;
         }
         return "";
     }
