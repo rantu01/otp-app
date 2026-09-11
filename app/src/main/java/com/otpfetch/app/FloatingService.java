@@ -116,7 +116,16 @@ public class FloatingService extends Service {
         try {
             if (popupView == null) showPopup();
             if (pCode != null) pCode.setText(code);
-            if (pStatus != null) popupStatus("New OTP auto-detected for " + email + "!", false);
+            // Copy + auto-open already ran centrally in OtpServer; just report it here.
+            if (pStatus != null) {
+                String msg = "New OTP auto-detected for " + email + "! Auto-copied.";
+                String pkg = OtpAutoActions.getSelectedPackage(this);
+                String label = OtpAutoActions.getSelectedLabel(this);
+                if (pkg != null && !pkg.isEmpty()) {
+                    msg += " Opening " + (label.isEmpty() ? pkg : label) + ".";
+                }
+                popupStatus(msg, false);
+            }
         } catch (Exception ignored) {}
     }
 
@@ -464,7 +473,7 @@ public class FloatingService extends Service {
                 if (pGetCode != null) pGetCode.setEnabled(true);
                 if (r.success) {
                     updateCode(r.code);
-                    popupStatus("OTP Fetched Successfully! Watching inbox — new codes pop up automatically.", false);
+                    popupStatus("OTP Fetched Successfully! Auto-copied. Watching inbox — new codes pop up automatically.", false);
                 } else {
                     popupStatus(r.error != null ? r.error : "OTP Not Found", true);
                 }

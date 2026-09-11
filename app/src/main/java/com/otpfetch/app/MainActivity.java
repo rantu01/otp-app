@@ -15,6 +15,7 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioGroup;
@@ -22,6 +23,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -37,6 +39,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.List;
 
 /**
  * Android port of popup.html / popup.js + server controls.
@@ -99,6 +102,11 @@ public class MainActivity extends AppCompatActivity {
     // floating + exit
     private Button floatingBtn, exitBtn;
 
+    // auto OTP actions
+    private CheckBox autoCopyCheck;
+    private TextView selectedAppLabel;
+    private Button selectAppBtn, clearAppBtn;
+
     private SharedPreferences prefs;
 
     @Override
@@ -115,6 +123,7 @@ public class MainActivity extends AppCompatActivity {
         bindTabs();
         bindOtpTab();
         bindNameTab();
+        bindAutoActions();
         bindFloatingAndExit();
 
         // restore saved account data (parity with chrome.storage.local)
@@ -153,9 +162,21 @@ public class MainActivity extends AppCompatActivity {
             if (!current.isEmpty() && !current.equalsIgnoreCase(email)) return;
             otpCode.setText(code);
             resultContainer.setVisibility(View.VISIBLE);
-            showStatus("New OTP auto-detected for " + email + "!", false);
+            // Copy + auto-open already ran centrally in OtpServer; just report it here.
+            showStatus(autoOtpMessage(email), false);
             FloatingService.updateCode(code);
         } catch (Exception ignored) {}
+    }
+
+    private String autoOtpMessage(String email) {
+        StringBuilder sb = new StringBuilder("New OTP auto-detected for " + email + "!");
+        if (OtpAutoActions.isAutoCopyEnabled(this)) sb.append(" Auto-copied.");
+        String label = OtpAutoActions.getSelectedLabel(this);
+        String pkg = OtpAutoActions.getSelectedPackage(this);
+        if (pkg != null && !pkg.isEmpty()) {
+            sb.append(" Opening ").append(label.isEmpty() ? pkg : label).append(".");
+        }
+        return sb.toString();
     }
 
     // ---------------- view binding ----------------
@@ -192,6 +213,11 @@ public class MainActivity extends AppCompatActivity {
 
         floatingBtn = findViewById(R.id.floatingBtn);
         exitBtn = findViewById(R.id.exitBtn);
+
+        autoCopyCheck = findViewById(R.id.autoCopyCheck);
+        selectedAppLabel = findViewById(R.id.selectedAppLabel);
+        selectAppBtn = findViewById(R.id.selectAppBtn);
+        clearAppBtn = findViewById(R.id.clearAppBtn);
     }
 
     // ---------------- server card ----------------
@@ -378,7 +404,7 @@ public class MainActivity extends AppCompatActivity {
                     if (ok) {
                         otpCode.setText(code);
                         resultContainer.setVisibility(View.VISIBLE);
-                        showStatus("OTP Fetched Successfully! Watching inbox — new codes pop up automatically.", false);
+                        showStatus("OTP Fetched Successfully! Auto-copied. Watching inbox — new codes pop up automatically.", false);
                         FloatingService.updateCode(code);
                     } else {
                         showStatus(err, true);
@@ -420,6 +446,75 @@ public class MainActivity extends AppCompatActivity {
             copyToClipboard(OtpHelper.splitCopyFormat(generatedName.getText().toString()));
             flash(copyNameSplitBtn, "Copied!");
         });
+    }
+
+    // ---------------- auto OTP actions (auto-copy + auto-open app) ----------------
+
+    private void bindAutoActions() {
+        autoCopyCheck.setChecked(OtpAutoActions.isAutoCopyEnabled(this));
+        autoCopyCheck.setOnCheckedChangeListener((v, checked) ->
+                OtpAutoActions.setAutoCopyEnabled(this, checked));
+        selectAppBtn.setOnClickListener(v -> showAppPickerDialog());
+        clearAppBtn.setOnClickListener(v -> {
+            OtpAutoActions.clearSelectedApp(this);
+            refreshSelectedAppLabel();
+            toast("Auto-open app cleared");
+        });
+        refreshSelectedAppLabel();
+    }
+
+    private void refreshSelectedAppLabel() {
+        if (selectedAppLabel == null) return;
+        String pkg = OtpAutoActions.getSelectedPackage(this);
+        String label = OtpAutoActions.getSelectedLabel(this);
+        if (pkg == null || pkg.isEmpty()) {
+            selectedAppLabel.setText("No app selected — OTP won't auto-open any app");
+        } else {
+            selectedAppLabel.setText("Auto-open: " + (label.isEmpty() ? pkg : label)
+                    + "\n" + pkg);
+        }
+    }
+
+    private void showAppPickerDialog() {
+        toast("Loading installed apps...");
+        selectAppBtn.setEnabled(false);
+        net.execute(() -> {
+            final List<OtpAutoActions.AppEntry> apps = OtpAutoActions.getInstalledApps(this);
+            main.post(() -> {
+                selectAppBtn.setEnabled(true);
+                if (apps.isEmpty()) {
+                    toast("No launchable apps found");
+                    return;
+                }
+                String[] items = new String[apps.size()];
+                for (int i = 0; i < apps.size(); i++) {
+                    items[i] = apps.get(i).label + "\n" + apps.get(i).packageName;
+                }
+                new AlertDialog.Builder(this)
+                        .setTitle("Select app to auto-open on OTP")
+                        .setItems(items, (d, which) -> {
+                            OtpAutoActions.AppEntry picked = apps.get(which);
+                            OtpAutoActions.saveSelectedApp(
+                                    this, picked.packageName, picked.label);
+                            refreshSelectedAppLabel();
+                            toast("Saved: " + picked.label + " will auto-open on OTP");
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
+            });
+        });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        try {
+            if (autoCopyCheck != null) {
+                autoCopyCheck.setChecked(OtpAutoActions.isAutoCopyEnabled(this));
+            }
+            refreshSelectedAppLabel();
+            refreshServerUi();
+        } catch (Exception ignored) {}
     }
 
     // ---------------- floating + exit ----------------

@@ -616,6 +616,12 @@ public class OtpServer {
         if (isNew) lastNotifiedCode.put(email, code);
         // Always refresh the bubble text, even for repeats.
         try { FloatingService.updateCode(code); } catch (Exception ignored) {}
+        // Auto-actions on EVERY receipt (fresh + manual re-fetch): copy to
+        // clipboard + open the user-selected app. UI listeners only render.
+        try {
+            Context ctx = appContext;
+            if (ctx != null) OtpAutoActions.handleAutoOtp(ctx, code);
+        } catch (Exception ignored) {}
         if (!isNew) return; // don't spam notifications/listeners for the same code
         postOtpNotification(email, code);
         for (OtpListener l : otpListeners) {
