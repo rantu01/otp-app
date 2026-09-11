@@ -94,9 +94,9 @@ public class MainActivity extends AppCompatActivity {
 
     // name tab
     private RadioGroup genderGroup;
-    private Button genNameBtn, copyNameBtn, copyNameSplitBtn;
+    private Button genNameBtn, copyNameBtn;
     private LinearLayout nameContainer;
-    private TextView generatedName;
+    private TextView firstNameView, lastNameView;
     private TextView nameStatus;
 
     // floating + exit
@@ -108,6 +108,21 @@ public class MainActivity extends AppCompatActivity {
     private Button selectAppBtn, clearAppBtn;
 
     private SharedPreferences prefs;
+    private boolean mProgrammaticAccount = false;
+    private boolean mProgrammaticGender = false;
+
+    private final AutoFetchManager.StatusListener autoFetchStatus =
+            new AutoFetchManager.StatusListener() {
+                @Override public void onAutoFetchStarted(String email) {
+                    main.post(() -> showStatus("Auto-fetching OTP for " + email + "...", false));
+                }
+                @Override public void onAutoFetchError(String email, String error) {
+                    main.post(() -> showStatus(error, true));
+                }
+            };
+
+    private final SharedPreferences.OnSharedPreferenceChangeListener prefsListener =
+            (p, key) -> main.post(() -> onSharedStateChanged(key));
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,6 +131,8 @@ public class MainActivity extends AppCompatActivity {
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         OtpServer.getInstance().init(getApplicationContext());
         OtpServer.getInstance().addOtpListener(autoOtpListener);
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener);
+        AutoFetchManager.addStatusListener(autoFetchStatus);
         requestNotifPermission();
 
         bindViews();
@@ -132,11 +149,76 @@ public class MainActivity extends AppCompatActivity {
             accountDataInput.setText(saved);
             extractAndShowEmail(saved);
         }
+        restoreSharedOtpState();
+        restoreSharedNameState();
+        restoreSharedGenderState();
         refreshServerUi();
+    }
+
+    /** Single-app sync: reflect state written by the floating popup. */
+    private void onSharedStateChanged(String key) {
+        if (key == null) return;
+        try {
+            if (OtpAutoActions.KEY_SAVED.equals(key)) {
+                String saved = prefs.getString(KEY_SAVED, "");
+                if (!saved.equals(accountDataInput.getText().toString())) {
+                    mProgrammaticAccount = true;
+                    accountDataInput.setText(saved);
+                    mProgrammaticAccount = false;
+                    extractAndShowEmail(saved);
+                }
+            } else if (OtpAutoActions.KEY_LAST_CODE.equals(key)
+                    || OtpAutoActions.KEY_LAST_EMAIL.equals(key)) {
+                restoreSharedOtpState();
+            } else if (OtpAutoActions.KEY_GEN_NAME.equals(key)) {
+                restoreSharedNameState();
+            } else if (OtpAutoActions.KEY_GENDER.equals(key)) {
+                restoreSharedGenderState();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void restoreSharedOtpState() {
+        try {
+            String code = OtpAutoActions.getLastCode(this);
+            String email = OtpAutoActions.getLastEmail(this);
+            if (code == null || code.isEmpty()) return;
+            String current = "";
+            try { current = OtpHelper.extractEmail(accountDataInput.getText().toString()); }
+            catch (Exception ignored) {}
+            if (!current.isEmpty() && !current.equalsIgnoreCase(email)) return;
+            otpCode.setText(code);
+            resultContainer.setVisibility(View.VISIBLE);
+            FloatingService.updateCode(code);
+        } catch (Exception ignored) {}
+    }
+
+    private void restoreSharedNameState() {
+        try {
+            String name = OtpAutoActions.getGenName(this);
+            if (name == null || name.isEmpty()) return;
+            showGeneratedName(name);
+            nameStatus.setText("Generated!");
+            nameStatus.setTextColor(ContextCompat.getColor(this, R.color.success));
+        } catch (Exception ignored) {}
+    }
+
+    private void restoreSharedGenderState() {
+        try {
+            String g = OtpAutoActions.getGender(this);
+            mProgrammaticGender = true;
+            if ("female".equalsIgnoreCase(g)) genderGroup.check(R.id.genderFemale);
+            else if ("both".equalsIgnoreCase(g)) genderGroup.check(R.id.genderBoth);
+            else genderGroup.check(R.id.genderMale);
+            mProgrammaticGender = false;
+        } catch (Exception ignored) {}
     }
 
     @Override
     protected void onDestroy() {
+        try { prefs.unregisterOnSharedPreferenceChangeListener(prefsListener); }
+        catch (Exception ignored) {}
+        AutoFetchManager.removeStatusListener(autoFetchStatus);
         OtpServer.getInstance().setLogListener(null);
         OtpServer.getInstance().removeOtpListener(autoOtpListener);
         super.onDestroy();
@@ -206,9 +288,9 @@ public class MainActivity extends AppCompatActivity {
         genderGroup = findViewById(R.id.genderGroup);
         genNameBtn = findViewById(R.id.genNameBtn);
         copyNameBtn = findViewById(R.id.copyNameBtn);
-        copyNameSplitBtn = findViewById(R.id.copyNameSplitBtn);
         nameContainer = findViewById(R.id.nameContainer);
-        generatedName = findViewById(R.id.generatedName);
+        firstNameView = findViewById(R.id.firstNameView);
+        lastNameView = findViewById(R.id.lastNameView);
         nameStatus = findViewById(R.id.nameStatus);
 
         floatingBtn = findViewById(R.id.floatingBtn);
@@ -301,8 +383,11 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void afterTextChanged(Editable s) {
                 String val = s.toString();
-                prefs.edit().putString(KEY_SAVED, val).apply();
                 extractAndShowEmail(val);
+                if (mProgrammaticAccount) return; // synced echo from popup — don't re-save/re-fetch
+                prefs.edit().putString(KEY_SAVED, val).apply();
+                // Auto-fetch: valid account lines start fetching immediately, no Get OTP tap.
+                AutoFetchManager.onAccountDataChanged(MainActivity.this, val);
             }
         });
 
@@ -427,25 +512,56 @@ public class MainActivity extends AppCompatActivity {
     // ---------------- Name tab (port of popup.js) ----------------
 
     private void bindNameTab() {
+        genderGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            if (mProgrammaticGender) return;
+            String gender = "male";
+            if (checkedId == R.id.genderFemale) gender = "female";
+            else if (checkedId == R.id.genderBoth) gender = "both";
+            OtpAutoActions.setGender(this, gender);
+        });
         genNameBtn.setOnClickListener(v -> {
             int checked = genderGroup.getCheckedRadioButtonId();
             String gender = "male";
             if (checked == R.id.genderFemale) gender = "female";
             else if (checked == R.id.genderBoth) gender = "both";
             String name = OtpHelper.generateName(gender);
-            generatedName.setText(name);
-            nameContainer.setVisibility(View.VISIBLE);
+            OtpAutoActions.setGenName(this, name);
+            showGeneratedName(name);
             nameStatus.setText("Generated!");
             nameStatus.setTextColor(ContextCompat.getColor(this, R.color.success));
         });
+        firstNameView.setOnClickListener(v -> {
+            copyToClipboard(firstNameView.getText().toString());
+            toast("First name copied");
+        });
+        lastNameView.setOnClickListener(v -> {
+            copyToClipboard(lastNameView.getText().toString());
+            toast("Last name copied");
+        });
         copyNameBtn.setOnClickListener(v -> {
-            copyToClipboard(generatedName.getText().toString());
+            copyToClipboard((firstNameView.getText().toString()
+                    + " " + lastNameView.getText().toString()).trim());
             flash(copyNameBtn, "Copied!");
         });
-        copyNameSplitBtn.setOnClickListener(v -> {
-            copyToClipboard(OtpHelper.splitCopyFormat(generatedName.getText().toString()));
-            flash(copyNameSplitBtn, "Copied!");
-        });
+    }
+
+    private void showGeneratedName(String fullName) {
+        if (nameContainer == null || firstNameView == null || lastNameView == null) return;
+        firstNameView.setText(firstOf(fullName));
+        lastNameView.setText(lastOf(fullName));
+        nameContainer.setVisibility(View.VISIBLE);
+    }
+
+    private static String firstOf(String fullName) {
+        if (fullName == null) return "";
+        String[] parts = fullName.trim().split("\\s+");
+        return parts.length == 0 ? "" : parts[0];
+    }
+
+    private static String lastOf(String fullName) {
+        if (fullName == null) return "";
+        String[] parts = fullName.trim().split("\\s+");
+        return parts.length < 2 ? "" : parts[parts.length - 1];
     }
 
     // ---------------- auto OTP actions (auto-copy + auto-open app) ----------------

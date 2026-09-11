@@ -616,6 +616,11 @@ public class OtpServer {
         if (isNew) lastNotifiedCode.put(email, code);
         // Always refresh the bubble text, even for repeats.
         try { FloatingService.updateCode(code); } catch (Exception ignored) {}
+        // Persist so late-opening UIs (main app / popup) share the same OTP state.
+        try {
+            Context ctx = appContext;
+            if (ctx != null) OtpAutoActions.saveLastOtp(ctx, email, code);
+        } catch (Exception ignored) {}
         // Auto-actions on EVERY receipt (fresh + manual re-fetch): copy to
         // clipboard + open the user-selected app. UI listeners only render.
         try {

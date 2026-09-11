@@ -33,6 +33,13 @@ public final class OtpAutoActions {
     private static final String KEY_AUTO_OPEN_PKG = "autoOpenPackage";
     private static final String KEY_AUTO_OPEN_LABEL = "autoOpenLabel";
 
+    // ---- shared single-app state (MainActivity <-> floating popup) ----
+    public static final String KEY_SAVED = "savedAccountData";
+    public static final String KEY_LAST_CODE = "lastOtpCode";
+    public static final String KEY_LAST_EMAIL = "lastOtpEmail";
+    public static final String KEY_GEN_NAME = "generatedName";
+    public static final String KEY_GENDER = "selectedGender";
+
     private OtpAutoActions() {}
 
     // ---------------- prefs ----------------
@@ -87,6 +94,76 @@ public final class OtpAutoActions {
 
     public static void clearSelectedApp(Context ctx) {
         saveSelectedApp(ctx, "", "");
+    }
+
+    // ---------------- shared single-app state ----------------
+
+    public static String getSavedAccount(Context ctx) {
+        try {
+            return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_SAVED, "");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static String getLastCode(Context ctx) {
+        try {
+            return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_LAST_CODE, "");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static String getLastEmail(Context ctx) {
+        try {
+            return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_LAST_EMAIL, "");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static void saveLastOtp(Context ctx, String email, String code) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(KEY_LAST_EMAIL, email == null ? "" : email)
+                    .putString(KEY_LAST_CODE, code == null ? "" : code)
+                    .apply();
+        } catch (Exception ignored) {}
+    }
+
+    public static String getGenName(Context ctx) {
+        try {
+            return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_GEN_NAME, "");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static void setGenName(Context ctx, String name) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(KEY_GEN_NAME, name == null ? "" : name).apply();
+        } catch (Exception ignored) {}
+    }
+
+    public static String getGender(Context ctx) {
+        try {
+            return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_GENDER, "male");
+        } catch (Exception e) {
+            return "male";
+        }
+    }
+
+    public static void setGender(Context ctx, String gender) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(KEY_GENDER, gender == null ? "male" : gender).apply();
+        } catch (Exception ignored) {}
     }
 
     // ---------------- main entry point ----------------

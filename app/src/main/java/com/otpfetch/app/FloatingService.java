@@ -19,6 +19,7 @@ import android.os.Looper;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
+import android.text.method.ScrollingMovementMethod;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -29,6 +30,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Scroller;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -74,8 +76,10 @@ public class FloatingService extends Service {
     private Button pClear;
     private Button pGenderMale, pGenderFemale, pGenderRandom;
     private String pGender = "male";
-    private TextView pName;
+    private TextView pFirstName, pLastName;
     private Button pGenName;
+    private boolean pProgrammaticAccount = false;
+    private boolean pProgrammaticGender = false;
 
     private static FloatingService instance;
     private final ExecutorService net = Executors.newCachedThreadPool();
@@ -83,6 +87,19 @@ public class FloatingService extends Service {
     private SharedPreferences prefs;
     private final OtpServer.OtpListener autoOtpListener = (email, code) ->
             main.post(() -> onAutoOtp(email, code));
+
+    private final AutoFetchManager.StatusListener autoFetchStatus =
+            new AutoFetchManager.StatusListener() {
+                @Override public void onAutoFetchStarted(String email) {
+                    main.post(() -> popupStatus("Auto-fetching OTP for " + email + "...", false));
+                }
+                @Override public void onAutoFetchError(String email, String error) {
+                    main.post(() -> popupStatus(error, true));
+                }
+            };
+
+    private final SharedPreferences.OnSharedPreferenceChangeListener prefsListener =
+            (p, key) -> main.post(() -> onSharedStateChanged(key));
 
     public static boolean isRunning() { return instance != null; }
 
@@ -103,18 +120,53 @@ public class FloatingService extends Service {
         super.onCreate();
         instance = this;
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (latestCode.isEmpty()) {
+            String savedCode = OtpAutoActions.getLastCode(this);
+            if (savedCode != null && !savedCode.isEmpty()) latestCode = savedCode;
+        }
+        pGender = OtpAutoActions.getGender(this);
         OtpServer.getInstance().init(getApplicationContext());
         OtpServer.getInstance().addOtpListener(autoOtpListener);
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener);
+        AutoFetchManager.addStatusListener(autoFetchStatus);
         createChannel();
         startForeground(NOTIF_ID, buildNotification());
         showBubble();
     }
 
-    /** Facebook-style: re-sent OTPs auto-open the popup (and update it if already open). */
+    /** Single-app sync: reflect state written by the main app. */
+    private void onSharedStateChanged(String key) {
+        if (key == null) return;
+        try {
+            if (OtpAutoActions.KEY_SAVED.equals(key)) {
+                if (pAccount == null) return;
+                String saved = prefs.getString(KEY_SAVED, "");
+                if (!saved.equals(pAccount.getText().toString())) {
+                    pProgrammaticAccount = true;
+                    pAccount.setText(saved);
+                    pProgrammaticAccount = false;
+                    refreshPopupEmail(saved);
+                }
+            } else if (OtpAutoActions.KEY_GEN_NAME.equals(key)) {
+                String name = OtpAutoActions.getGenName(this);
+                if (name != null && !name.isEmpty()) showPopupName(name);
+            } else if (OtpAutoActions.KEY_GENDER.equals(key)) {
+                String g = OtpAutoActions.getGender(this);
+                if (g != null && !g.isEmpty() && !g.equals(pGender)) {
+                    pProgrammaticGender = true;
+                    pGender = g;
+                    pProgrammaticGender = false;
+                    refreshGenderUi();
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /** Re-sent OTPs update the open popup in place; only the selected app auto-opens. */
     private void onAutoOtp(String email, String code) {
         updateCode(code);
         try {
-            if (popupView == null) showPopup();
+            if (popupView == null) return; // do NOT pop the popup open — selected app opens instead
             if (pCode != null) pCode.setText(code);
             // Copy + auto-open already ran centrally in OtpServer; just report it here.
             if (pStatus != null) {
@@ -260,12 +312,22 @@ public class FloatingService extends Service {
         pAccount = new EditText(this);
         pAccount.setHint("Paste Account Data (Email|RefreshToken|ClientId)...");
         pAccount.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        pAccount.setMinLines(3);
+        pAccount.setLines(3);
+        pAccount.setMaxLines(3);
+        pAccount.setVerticalScrollBarEnabled(true);
+        pAccount.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
+        pAccount.setOverScrollMode(View.OVER_SCROLL_ALWAYS);
+        pAccount.setMovementMethod(new ScrollingMovementMethod());
+        pAccount.setScroller(new Scroller(this));
+        pAccount.setHorizontallyScrolling(false);
+        pAccount.setGravity(Gravity.TOP);
         pAccount.setTextSize(11);
         pAccount.setTextColor(getColor(R.color.title_text));
         pAccount.setHintTextColor(getColor(R.color.input_hint));
         pAccount.setBackgroundColor(getColor(R.color.info_bg));
         pAccount.setPadding(dp(8), dp(8), dp(8), dp(8));
+        pAccount.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(70)));
         pAccount.setText(prefs.getString(KEY_SAVED, ""));
         card.addView(pAccount);
 
@@ -313,6 +375,7 @@ public class FloatingService extends Service {
 
         card.addView(sectionTitle("US Name Gen", 14));
 
+        pGender = OtpAutoActions.getGender(this);
         LinearLayout genderRow = new LinearLayout(this);
         genderRow.setOrientation(LinearLayout.HORIZONTAL);
         pGenderMale = genderButton("Male", "male");
@@ -325,24 +388,36 @@ public class FloatingService extends Service {
         refreshGenderUi();
 
         pGenName = actionButton("Generate Name");
-        pName = new TextView(this);
-        pName.setGravity(Gravity.CENTER);
-        pName.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        pName.setTextColor(getColor(R.color.accent_blue));
-        pName.setVisibility(View.GONE);
+        TextView tapHint = smallText("Tap a name to copy it");
+        tapHint.setGravity(Gravity.CENTER);
+        card.addView(pGenName);
+        card.addView(tapHint);
+        LinearLayout nameRow = new LinearLayout(this);
+        nameRow.setOrientation(LinearLayout.HORIZONTAL);
+        pFirstName = nameField("---");
+        pLastName = nameField("---");
+        pFirstName.setOnClickListener(v -> {
+            copy(pFirstName.getText().toString());
+            toast("First name copied");
+        });
+        pLastName.setOnClickListener(v -> {
+            copy(pLastName.getText().toString());
+            toast("Last name copied");
+        });
+        nameRow.addView(pFirstName);
+        nameRow.addView(pLastName);
+        card.addView(nameRow);
+        String savedName = OtpAutoActions.getGenName(this);
+        if (savedName != null && !savedName.isEmpty()) showPopupName(savedName);
         Button pCopyName = actionButton("Copy Name");
-        Button pCopySplit = actionButton("Copy First, Last");
         pGenName.setOnClickListener(v -> {
             String name = OtpHelper.generateName(pGender);
-            pName.setText(name);
-            pName.setVisibility(View.VISIBLE);
+            OtpAutoActions.setGenName(this, name);
+            showPopupName(name);
         });
-        pCopyName.setOnClickListener(v -> copy(pName.getText().toString()));
-        pCopySplit.setOnClickListener(v -> copy(OtpHelper.splitCopyFormat(pName.getText().toString())));
-        card.addView(pGenName);
-        card.addView(pName);
+        pCopyName.setOnClickListener(v -> copy(
+                (pFirstName.getText().toString() + " " + pLastName.getText().toString()).trim()));
         card.addView(pCopyName);
-        card.addView(pCopySplit);
 
         Button openApp = actionButton("Open Full App");
         openApp.setOnClickListener(v -> {
@@ -361,11 +436,19 @@ public class FloatingService extends Service {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void afterTextChanged(Editable s) {
-                prefs.edit().putString(KEY_SAVED, s.toString()).apply();
-                refreshPopupEmail(s.toString());
+                String val = s.toString();
+                refreshPopupEmail(val);
+                if (pProgrammaticAccount) return; // synced echo from main app
+                prefs.edit().putString(KEY_SAVED, val).apply();
+                // Auto-fetch: valid account lines start fetching immediately, no Get OTP tap.
+                AutoFetchManager.onAccountDataChanged(FloatingService.this, val);
             }
         });
         refreshPopupEmail(pAccount.getText().toString());
+        // Popup opened with existing data behaves like the main app: fetch right away.
+        if (!pAccount.getText().toString().trim().isEmpty()) {
+            AutoFetchManager.onAccountDataChanged(this, pAccount.getText().toString());
+        }
         refreshPopupServerUi();
 
         scroll.addView(card);
@@ -403,8 +486,42 @@ public class FloatingService extends Service {
         popupView = null;
         pServerStatus = null; pServerBtn = null; pAccount = null; pEmail = null;
         pCopyEmail = null; pGetCode = null; pStatus = null; pCode = null;
-        pCopyCode = null; pClear = null; pName = null; pGenName = null;
+        pCopyCode = null; pClear = null; pFirstName = null; pLastName = null; pGenName = null;
         pGenderMale = null; pGenderFemale = null; pGenderRandom = null;
+    }
+
+    private void showPopupName(String fullName) {
+        if (pFirstName == null || pLastName == null) return;
+        pFirstName.setText(firstOf(fullName));
+        pLastName.setText(lastOf(fullName));
+    }
+
+    private static String firstOf(String fullName) {
+        if (fullName == null) return "";
+        String[] parts = fullName.trim().split("\\s+");
+        return parts.length == 0 ? "" : parts[0];
+    }
+
+    private static String lastOf(String fullName) {
+        if (fullName == null) return "";
+        String[] parts = fullName.trim().split("\\s+");
+        return parts.length < 2 ? "" : parts[parts.length - 1];
+    }
+
+    private TextView nameField(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setGravity(Gravity.CENTER);
+        tv.setTextSize(15);
+        tv.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        tv.setTextColor(getColor(R.color.accent_blue));
+        tv.setPadding(dp(8), dp(8), dp(8), dp(8));
+        tv.setClickable(true);
+        tv.setFocusable(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        tv.setLayoutParams(lp);
+        return tv;
     }
 
     // ---------- popup actions (same logic as MainActivity) ----------
@@ -526,7 +643,9 @@ public class FloatingService extends Service {
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         b.setLayoutParams(lp);
         b.setOnClickListener(v -> {
+            if (pProgrammaticGender) return;
             pGender = value;
+            OtpAutoActions.setGender(FloatingService.this, value);
             refreshGenderUi();
         });
         return b;
@@ -560,6 +679,9 @@ public class FloatingService extends Service {
 
     @Override
     public void onDestroy() {
+        try { prefs.unregisterOnSharedPreferenceChangeListener(prefsListener); }
+        catch (Exception ignored) {}
+        AutoFetchManager.removeStatusListener(autoFetchStatus);
         try { OtpServer.getInstance().removeOtpListener(autoOtpListener); } catch (Exception ignored) {}
         hidePopup();
         net.shutdownNow();

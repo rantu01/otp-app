@@ -115,6 +115,9 @@
                 android:gravity="top"
                 android:hint="Paste Account Data (Email|RefreshToken|ClientId)..."
                 android:inputType="textMultiLine"
+                android:maxLines="4"
+                android:scrollbars="vertical"
+                android:overScrollMode="always"
                 android:textColor="@color/title_text"
                 android:textColorHint="@color/input_hint"
                 android:textCursorDrawable="@null"
@@ -268,26 +271,54 @@
                 android:visibility="gone">
 
                 <TextView
-                    android:id="@+id/generatedName"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center"
-                    android:text="---"
-                    android:textColor="@color/accent_blue"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
+                    android:text="Tap a name to copy it"
+                    android:textColor="@color/title_text"
+                    android:textSize="10sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/firstNameView"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:padding="8dp"
+                        android:text="---"
+                        android:textColor="@color/accent_blue"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/lastNameView"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:padding="8dp"
+                        android:text="---"
+                        android:textColor="@color/accent_blue"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
                 <Button
                     android:id="@+id/copyNameBtn"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Copy Name" />
-
-                <Button
-                    android:id="@+id/copyNameSplitBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Copy First, Last" />
             </LinearLayout>
 
             <TextView
