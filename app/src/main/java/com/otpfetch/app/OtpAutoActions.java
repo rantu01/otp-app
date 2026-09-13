@@ -39,6 +39,7 @@ public final class OtpAutoActions {
     public static final String KEY_LAST_EMAIL = "lastOtpEmail";
     public static final String KEY_GEN_NAME = "generatedName";
     public static final String KEY_GENDER = "selectedGender";
+    public static final String KEY_COUNTRY = "selectedCountry";
 
     private OtpAutoActions() {}
 
@@ -163,6 +164,22 @@ public final class OtpAutoActions {
         try {
             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                     .putString(KEY_GENDER, gender == null ? "male" : gender).apply();
+        } catch (Exception ignored) {}
+    }
+
+    public static int getCountry(Context ctx) {
+        try {
+            return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getInt(KEY_COUNTRY, 0);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public static void setCountry(Context ctx, int index) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putInt(KEY_COUNTRY, Math.max(0, index)).apply();
         } catch (Exception ignored) {}
     }
 

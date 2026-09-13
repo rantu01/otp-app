@@ -122,42 +122,86 @@ public final class OtpHelper {
         return "";
     }
 
-    // (?:kode|code|sandi|código|codice|FB-)?\s*([0-9]{5,6})\b  (case-insensitive)
-    private static final Pattern OTP_PATTERN =
-            Pattern.compile("(?:kode|code|sandi|c\u00f3digo|codice|FB-)?\\s*([0-9]{5,6})\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    // Facebook sends either a 5-digit or a 6-digit code. A newer 6-digit
+    // mail often arrives AFTER an older 5-digit one — using the stale
+    // 5-digit code gets the account suspended. So: 6-digit always wins
+    // inside one text, and callers scan newest mail first.
+    // Lookarounds stop "1234567" matching as "234567".
+    private static final Pattern OTP6_PATTERN =
+            Pattern.compile("(?<!\\d)([0-9]{6})(?!\\d)");
+    private static final Pattern OTP5_PATTERN =
+            Pattern.compile("(?<!\\d)([0-9]{5})(?!\\d)");
 
-    /** Returns the OTP code or null. Mirrors extractFacebookOTP() in server.js. */
+    /** Returns the OTP code or null. Prefers a 6-digit code over a 5-digit one. */
     public static String extractFacebookOTP(String text) {
         if (text == null) return null;
-        Matcher m = OTP_PATTERN.matcher(text);
-        while (m.find()) {
-            String code = m.group(1);
-            if (code != null && !code.equals("20260") && !code.equals("202600")) {
+        Matcher m6 = OTP6_PATTERN.matcher(text);
+        while (m6.find()) {
+            String code = m6.group(1);
+            if (code != null && !code.equals("202600")) {
+                return code;
+            }
+        }
+        Matcher m5 = OTP5_PATTERN.matcher(text);
+        while (m5.find()) {
+            String code = m5.group(1);
+            if (code != null && !code.equals("20260")) {
                 return code;
             }
         }
         return null;
     }
 
-    // ---- US Name Generator (same lists as popup.js) ----
+    /** Length of a valid OTP code found in text, or 0. Used for 6-digit priority. */
+    static int otpCodeLength(String text) {
+        String c = extractFacebookOTP(text);
+        return c == null ? 0 : c.length();
+    }
+
+    // ---- Country name generator (CountryData lists; user-extendable to 30-40) ----
     private static final String[] MALE = {"James","John","Robert","Michael","William","David","Richard","Joseph","Thomas","Charles","Christopher","Daniel","Matthew","Anthony","Donald","Mark","Paul","Steven","Andrew","Kenneth"};
     private static final String[] FEMALE = {"Mary","Patricia","Jennifer","Linda","Elizabeth","Barbara","Susan","Jessica","Sarah","Karen","Nancy","Lisa","Betty","Margaret","Sandra","Ashley","Kimberly","Emily"};
     private static final String[] LAST = {"Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis","Rodriguez","Martinez","Hernandez","Lopez","Gonzalez","Wilson","Anderson"};
 
     public static String generateName(String gender) {
-        Random r = new Random();
-        String first;
-        if ("female".equalsIgnoreCase(gender)) {
-            first = FEMALE[r.nextInt(FEMALE.length)];
-        } else if ("both".equalsIgnoreCase(gender) || "random".equalsIgnoreCase(gender)) {
-            int total = MALE.length + FEMALE.length;
-            int pick = r.nextInt(total);
-            first = pick < MALE.length ? MALE[pick] : FEMALE[pick - MALE.length];
-        } else {
-            first = MALE[r.nextInt(MALE.length)];
+        return generateName(0, gender);
+    }
+
+    /** Country-aware name: countryIndex into CountryData.COUNTRIES. */
+    public static String generateName(int countryIndex, String gender) {
+        try {
+            CountryData.Country c = CountryData.byIndex(countryIndex);
+            Random r = new Random();
+            String first;
+            if ("female".equalsIgnoreCase(gender)) {
+                first = c.female[r.nextInt(c.female.length)];
+            } else if ("both".equalsIgnoreCase(gender) || "random".equalsIgnoreCase(gender)) {
+                int total = c.male.length + c.female.length;
+                int pick = r.nextInt(total);
+                first = pick < c.male.length ? c.male[pick] : c.female[pick - c.male.length];
+            } else {
+                first = c.male[r.nextInt(c.male.length)];
+            }
+            return first + " " + c.last[r.nextInt(c.last.length)];
+        } catch (Exception e) {
+            return generateName(gender);
         }
-        return first + " " + LAST[r.nextInt(LAST.length)];
+    }
+
+    /** Suggested login e-mail for a generated name + country, e.g. anna.muller@outlook.de */
+    public static String suggestEmail(String fullName, int countryIndex) {
+        try {
+            if (fullName == null) return "";
+            String[] parts = fullName.trim().toLowerCase().split("\\s+");
+            if (parts.length == 0) return "";
+            String first = parts[0].replaceAll("[^a-z]", "");
+            String last = parts.length > 1 ? parts[parts.length - 1].replaceAll("[^a-z]", "") : "";
+            String local = last.isEmpty() ? first : first + "." + last;
+            if (local.isEmpty()) return "";
+            return local + "@" + CountryData.byIndex(countryIndex).domain;
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     /**

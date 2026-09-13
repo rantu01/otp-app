@@ -14,11 +14,14 @@ import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioGroup;
+import android.widget.Spinner;
+import android.widget.AdapterView;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -45,10 +48,9 @@ import java.util.List;
  * Android port of popup.html / popup.js + server controls.
  *
  * Tabs:
- *  1. OTP Fetcher  — paste "Email|RefreshToken|ClientId", GET CODE via the
- *                     embedded server (http://127.0.0.1:3000/get-otp),
- *                     copy e-mail / copy code, clear saved data.
- *  2. US Name Gen  — gender radio + generate + copy.
+ *  1. OTP — paste "Email|RefreshToken|ClientId", GET CODE,
+ *           copy e-mail / copy code, clear.
+ *  2. Names — country + gender + generate + copy (with e-mail suggestion).
  *
  * Server card:
  *  - Start / Stop embedded OTP bridge (same logic as Node server.js).
@@ -76,8 +78,6 @@ public class MainActivity extends AppCompatActivity {
     // server card
     private TextView serverStatus;
     private Button serverToggleBtn;
-    private TextView serverLog;
-    private ScrollView serverLogScroll;
 
     // tabs
     private Button tabOtpBtn, tabNameBtn;
@@ -94,10 +94,14 @@ public class MainActivity extends AppCompatActivity {
 
     // name tab
     private RadioGroup genderGroup;
+    private Spinner countrySpinner;
+    private TextView domainView;
     private Button genNameBtn, copyNameBtn;
     private LinearLayout nameContainer;
-    private TextView firstNameView, lastNameView;
+    private TextView firstNameView, lastNameView, suggestedEmailView;
     private TextView nameStatus;
+    private int currentCountry = 0;
+    private boolean mProgrammaticCountry = false;
 
     // floating + exit
     private Button floatingBtn, exitBtn;
@@ -114,7 +118,7 @@ public class MainActivity extends AppCompatActivity {
     private final AutoFetchManager.StatusListener autoFetchStatus =
             new AutoFetchManager.StatusListener() {
                 @Override public void onAutoFetchStarted(String email) {
-                    main.post(() -> showStatus("Auto-fetching OTP for " + email + "...", false));
+                    main.post(() -> showStatus("Loading " + email + "...", false));
                 }
                 @Override public void onAutoFetchError(String email, String error) {
                     main.post(() -> showStatus(error, true));
@@ -152,6 +156,7 @@ public class MainActivity extends AppCompatActivity {
         restoreSharedOtpState();
         restoreSharedNameState();
         restoreSharedGenderState();
+        restoreSharedCountryState();
         refreshServerUi();
     }
 
@@ -174,6 +179,8 @@ public class MainActivity extends AppCompatActivity {
                 restoreSharedNameState();
             } else if (OtpAutoActions.KEY_GENDER.equals(key)) {
                 restoreSharedGenderState();
+            } else if (OtpAutoActions.KEY_COUNTRY.equals(key)) {
+                restoreSharedCountryState();
             }
         } catch (Exception ignored) {}
     }
@@ -198,8 +205,23 @@ public class MainActivity extends AppCompatActivity {
             String name = OtpAutoActions.getGenName(this);
             if (name == null || name.isEmpty()) return;
             showGeneratedName(name);
-            nameStatus.setText("Generated!");
+            nameStatus.setText("✓");
             nameStatus.setTextColor(ContextCompat.getColor(this, R.color.success));
+        } catch (Exception ignored) {}
+    }
+
+    private void restoreSharedCountryState() {
+        try {
+            int c = OtpAutoActions.getCountry(this);
+            if (c < 0 || c >= CountryData.COUNTRIES.length) return;
+            if (c == currentCountry) return;
+            currentCountry = c;
+            refreshDomainView();
+            if (countrySpinner != null) {
+                mProgrammaticCountry = true;
+                countrySpinner.setSelection(c);
+                mProgrammaticCountry = false;
+            }
         } catch (Exception ignored) {}
     }
 
@@ -251,12 +273,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String autoOtpMessage(String email) {
-        StringBuilder sb = new StringBuilder("New OTP auto-detected for " + email + "!");
-        if (OtpAutoActions.isAutoCopyEnabled(this)) sb.append(" Auto-copied.");
+        StringBuilder sb = new StringBuilder("✓ " + email);
+        if (OtpAutoActions.isAutoCopyEnabled(this)) sb.append(" · copied");
         String label = OtpAutoActions.getSelectedLabel(this);
         String pkg = OtpAutoActions.getSelectedPackage(this);
         if (pkg != null && !pkg.isEmpty()) {
-            sb.append(" Opening ").append(label.isEmpty() ? pkg : label).append(".");
+            sb.append(" · ").append(label.isEmpty() ? pkg : label);
         }
         return sb.toString();
     }
@@ -266,8 +288,6 @@ public class MainActivity extends AppCompatActivity {
     private void bindViews() {
         serverStatus = findViewById(R.id.serverStatus);
         serverToggleBtn = findViewById(R.id.serverToggleBtn);
-        serverLog = findViewById(R.id.serverLog);
-        serverLogScroll = findViewById(R.id.serverLogScroll);
 
         tabOtpBtn = findViewById(R.id.tabOtpBtn);
         tabNameBtn = findViewById(R.id.tabNameBtn);
@@ -286,11 +306,14 @@ public class MainActivity extends AppCompatActivity {
         clearBtn = findViewById(R.id.clearBtn);
 
         genderGroup = findViewById(R.id.genderGroup);
+        countrySpinner = findViewById(R.id.countrySpinner);
+        domainView = findViewById(R.id.domainView);
         genNameBtn = findViewById(R.id.genNameBtn);
         copyNameBtn = findViewById(R.id.copyNameBtn);
         nameContainer = findViewById(R.id.nameContainer);
         firstNameView = findViewById(R.id.firstNameView);
         lastNameView = findViewById(R.id.lastNameView);
+        suggestedEmailView = findViewById(R.id.suggestedEmailView);
         nameStatus = findViewById(R.id.nameStatus);
 
         floatingBtn = findViewById(R.id.floatingBtn);
@@ -306,7 +329,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void bindServerCard() {
         OtpServer.getInstance().setLogListener(line ->
-                main.post(() -> appendLog(line)));
+                main.post(this::refreshServerUi));
         serverToggleBtn.setOnClickListener(v -> {
             if (OtpServer.getInstance().isRunning()) stopServer();
             else startServer();
@@ -318,14 +341,12 @@ public class MainActivity extends AppCompatActivity {
             try {
                 OtpServer.getInstance().start();
                 main.post(() -> {
-                    toast("Server started on port 3000");
-                    appendLog("Server started — http://127.0.0.1:3000");
+                    toast("Started");
                     refreshServerUi();
                 });
             } catch (Exception e) {
                 main.post(() -> {
-                    toast("Server failed: " + e.getMessage());
-                    appendLog("Start failed: " + e.getMessage());
+                    toast("Failed: " + e.getMessage());
                     refreshServerUi();
                 });
             }
@@ -336,7 +357,7 @@ public class MainActivity extends AppCompatActivity {
         net.execute(() -> {
             OtpServer.getInstance().stop();
             main.post(() -> {
-                toast("Server stopped");
+                toast("Stopped");
                 refreshServerUi();
             });
         });
@@ -345,18 +366,11 @@ public class MainActivity extends AppCompatActivity {
     private void refreshServerUi() {
         boolean running = OtpServer.getInstance().isRunning();
         serverStatus.setText(running
-                ? "● Server RUNNING — http://127.0.0.1:3000  (watched: "
-                + OtpServer.getInstance().watchedCount() + ")"
-                : "○ Server STOPPED");
+                ? "● Running :3000 (" + OtpServer.getInstance().watchedCount() + ")"
+                : "○ Stopped");
         serverStatus.setTextColor(ContextCompat.getColor(this, running ? R.color.success : R.color.error));
-        serverToggleBtn.setText(running ? "Stop Server" : "Start Server");
-        floatingBtn.setText(FloatingService.isRunning() ? "Disable Floating Widget" : "Enable Floating Widget");
-    }
-
-    private void appendLog(String line) {
-        serverLog.append("[" + System.currentTimeMillis() + "] " + line + "\n");
-        serverLogScroll.post(() -> serverLogScroll.fullScroll(View.FOCUS_DOWN));
-        refreshServerUi();
+        serverToggleBtn.setText(running ? "Stop" : "Start");
+        floatingBtn.setText(FloatingService.isRunning() ? "Floating: ON" : "Floating: OFF");
     }
 
     // ---------------- tabs ----------------
@@ -393,14 +407,14 @@ public class MainActivity extends AppCompatActivity {
 
         copyEmailBtn.setOnClickListener(v -> {
             copyToClipboard(extractedEmail.getText().toString());
-            flash(copyEmailBtn, "Copied!");
+            flash(copyEmailBtn, "✓");
         });
 
         getCodeBtn.setOnClickListener(v -> onGetCode());
 
         copyCodeBtn.setOnClickListener(v -> {
             copyToClipboard(otpCode.getText().toString());
-            flash(copyCodeBtn, "Copied!");
+            flash(copyCodeBtn, "✓");
         });
 
         clearBtn.setOnClickListener(v -> {
@@ -425,7 +439,7 @@ public class MainActivity extends AppCompatActivity {
     private void onGetCode() {
         String data = accountDataInput.getText().toString().trim();
         if (data.isEmpty()) {
-            showStatus("Please paste account data first!", true);
+            showStatus("Paste account data first", true);
             return;
         }
         final OtpHelper.Account acc;
@@ -440,13 +454,13 @@ public class MainActivity extends AppCompatActivity {
         if (!OtpServer.getInstance().isRunning()) {
             try { OtpServer.getInstance().start(); }
             catch (Exception e) {
-                showStatus("Server failed to start: " + e.getMessage(), true);
+                showStatus("Start failed: " + e.getMessage(), true);
                 return;
             }
             refreshServerUi();
         }
 
-        showStatus("Connecting to Microsoft Graph API...", false);
+        showStatus("Loading...", false);
         resultContainer.setVisibility(View.GONE);
         getCodeBtn.setEnabled(false);
 
@@ -489,7 +503,7 @@ public class MainActivity extends AppCompatActivity {
                     if (ok) {
                         otpCode.setText(code);
                         resultContainer.setVisibility(View.VISIBLE);
-                        showStatus("OTP Fetched Successfully! Auto-copied. Watching inbox — new codes pop up automatically.", false);
+                        showStatus("✓ Copied", false);
                         FloatingService.updateCode(code);
                     } else {
                         showStatus(err, true);
@@ -498,7 +512,7 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 main.post(() -> {
                     getCodeBtn.setEnabled(true);
-                    showStatus("Failed to fetch OTP: " + e.getMessage(), true);
+                    showStatus("Failed: " + e.getMessage(), true);
                 });
             }
         });
@@ -512,6 +526,24 @@ public class MainActivity extends AppCompatActivity {
     // ---------------- Name tab (port of popup.js) ----------------
 
     private void bindNameTab() {
+        currentCountry = OtpAutoActions.getCountry(this);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, CountryData.displayNames());
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        countrySpinner.setAdapter(adapter);
+        if (currentCountry >= 0 && currentCountry < CountryData.COUNTRIES.length) {
+            countrySpinner.setSelection(currentCountry);
+        }
+        refreshDomainView();
+        countrySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                if (mProgrammaticCountry) return;
+                currentCountry = pos;
+                OtpAutoActions.setCountry(MainActivity.this, pos);
+                refreshDomainView();
+            }
+            @Override public void onNothingSelected(AdapterView<?> p) {}
+        });
         genderGroup.setOnCheckedChangeListener((group, checkedId) -> {
             if (mProgrammaticGender) return;
             String gender = "male";
@@ -524,31 +556,46 @@ public class MainActivity extends AppCompatActivity {
             String gender = "male";
             if (checked == R.id.genderFemale) gender = "female";
             else if (checked == R.id.genderBoth) gender = "both";
-            String name = OtpHelper.generateName(gender);
+            String name = OtpHelper.generateName(currentCountry, gender);
             OtpAutoActions.setGenName(this, name);
             showGeneratedName(name);
-            nameStatus.setText("Generated!");
+            nameStatus.setText("✓");
             nameStatus.setTextColor(ContextCompat.getColor(this, R.color.success));
         });
         firstNameView.setOnClickListener(v -> {
             copyToClipboard(firstNameView.getText().toString());
-            toast("First name copied");
+            toast("Copied");
         });
         lastNameView.setOnClickListener(v -> {
             copyToClipboard(lastNameView.getText().toString());
-            toast("Last name copied");
+            toast("Copied");
+        });
+        suggestedEmailView.setOnClickListener(v -> {
+            copyToClipboard(suggestedEmailView.getText().toString());
+            toast("Copied");
         });
         copyNameBtn.setOnClickListener(v -> {
             copyToClipboard((firstNameView.getText().toString()
                     + " " + lastNameView.getText().toString()).trim());
-            flash(copyNameBtn, "Copied!");
+            flash(copyNameBtn, "✓");
         });
+    }
+
+    private void refreshDomainView() {
+        if (domainView == null) return;
+        try {
+            domainView.setText("@" + CountryData.byIndex(currentCountry).domain);
+        } catch (Exception ignored) {}
     }
 
     private void showGeneratedName(String fullName) {
         if (nameContainer == null || firstNameView == null || lastNameView == null) return;
         firstNameView.setText(firstOf(fullName));
         lastNameView.setText(lastOf(fullName));
+        if (suggestedEmailView != null) {
+            String sug = OtpHelper.suggestEmail(fullName, currentCountry);
+            suggestedEmailView.setText(sug == null ? "" : sug);
+        }
         nameContainer.setVisibility(View.VISIBLE);
     }
 
@@ -574,7 +621,7 @@ public class MainActivity extends AppCompatActivity {
         clearAppBtn.setOnClickListener(v -> {
             OtpAutoActions.clearSelectedApp(this);
             refreshSelectedAppLabel();
-            toast("Auto-open app cleared");
+            toast("Cleared");
         });
         refreshSelectedAppLabel();
     }
@@ -584,36 +631,35 @@ public class MainActivity extends AppCompatActivity {
         String pkg = OtpAutoActions.getSelectedPackage(this);
         String label = OtpAutoActions.getSelectedLabel(this);
         if (pkg == null || pkg.isEmpty()) {
-            selectedAppLabel.setText("No app selected — OTP won't auto-open any app");
+            selectedAppLabel.setText("No auto-open app");
         } else {
-            selectedAppLabel.setText("Auto-open: " + (label.isEmpty() ? pkg : label)
-                    + "\n" + pkg);
+            selectedAppLabel.setText("▶ " + (label.isEmpty() ? pkg : label));
         }
     }
 
     private void showAppPickerDialog() {
-        toast("Loading installed apps...");
+        toast("Loading...");
         selectAppBtn.setEnabled(false);
         net.execute(() -> {
             final List<OtpAutoActions.AppEntry> apps = OtpAutoActions.getInstalledApps(this);
-            main.post(() -> {
-                selectAppBtn.setEnabled(true);
-                if (apps.isEmpty()) {
-                    toast("No launchable apps found");
-                    return;
-                }
+                main.post(() -> {
+                    selectAppBtn.setEnabled(true);
+                    if (apps.isEmpty()) {
+                        toast("None found");
+                        return;
+                    }
                 String[] items = new String[apps.size()];
                 for (int i = 0; i < apps.size(); i++) {
                     items[i] = apps.get(i).label + "\n" + apps.get(i).packageName;
                 }
                 new AlertDialog.Builder(this)
-                        .setTitle("Select app to auto-open on OTP")
+                        .setTitle("Auto-open app")
                         .setItems(items, (d, which) -> {
                             OtpAutoActions.AppEntry picked = apps.get(which);
                             OtpAutoActions.saveSelectedApp(
                                     this, picked.packageName, picked.label);
                             refreshSelectedAppLabel();
-                            toast("Saved: " + picked.label + " will auto-open on OTP");
+                            toast("✓ " + picked.label);
                         })
                         .setNegativeButton("Cancel", null)
                         .show();
@@ -646,7 +692,7 @@ public class MainActivity extends AppCompatActivity {
                     Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:" + getPackageName()));
                     startActivityForResult(i, REQ_OVERLAY);
-                    toast("Grant overlay permission, then tap Enable again");
+                    toast("Grant overlay, then retry");
                     return;
                 }
                 startFloatingService();
@@ -663,7 +709,7 @@ public class MainActivity extends AppCompatActivity {
         } else {
             startService(i);
         }
-        toast("Floating widget enabled");
+        toast("Floating ON");
         main.postDelayed(this::refreshServerUi, 500);
     }
 
@@ -672,7 +718,7 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQ_OVERLAY && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (Settings.canDrawOverlays(this)) startFloatingService();
-            else toast("Overlay permission denied — floating disabled");
+            else toast("Overlay denied");
         }
     }
 
@@ -692,7 +738,7 @@ public class MainActivity extends AppCompatActivity {
     private void copyToClipboard(String text) {
         ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("otp", text));
-        toast("Copied to clipboard");
+        toast("Copied");
     }
 
     private void flash(Button b, String temp) {

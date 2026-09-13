@@ -16,8 +16,8 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="rantuOTP"
-            android:textColor="@color/title_text"
-            android:textSize="18sp"
+            android:textColor="@color/accent_blue"
+            android:textSize="20sp"
             android:textStyle="bold" />
 
         <!-- Server card -->
@@ -31,19 +31,12 @@
             android:padding="10dp">
 
             <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Bridge Server (:3000)"
-                android:textColor="@color/title_text"
-                android:textStyle="bold" />
-
-            <TextView
                 android:id="@+id/serverStatus"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="○ Server STOPPED"
-                android:textSize="12sp"
+                android:gravity="center"
+                android:text="○ Stopped"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <Button
@@ -51,25 +44,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:text="Start Server" />
-
-            <ScrollView
-                android:id="@+id/serverLogScroll"
-                android:layout_width="match_parent"
-                android:layout_height="90dp"
-                android:layout_marginTop="6dp"
-                android:background="@color/log_bg">
-
-                <TextView
-                    android:id="@+id/serverLog"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:padding="6dp"
-                    android:text="Server log...\n"
-                    android:textColor="@color/log_text"
-                    android:textSize="10sp"
-                    android:typeface="monospace" />
-            </ScrollView>
+                android:backgroundTint="@color/float_purple"
+                android:text="Start" />
         </LinearLayout>
 
         <!-- Tabs -->
@@ -84,7 +60,8 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="OTP Fetcher" />
+                android:backgroundTint="@color/accent_teal"
+                android:text="OTP" />
 
             <Button
                 android:id="@+id/tabNameBtn"
@@ -93,7 +70,8 @@
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
                 android:alpha="0.5"
-                android:text="US Name Gen" />
+                android:backgroundTint="@color/accent_orange"
+                android:text="Names" />
         </LinearLayout>
 
         <!-- TAB 1: OTP -->
@@ -113,7 +91,7 @@
                 android:layout_height="70dp"
                 android:background="@color/info_bg"
                 android:gravity="top"
-                android:hint="Paste Account Data (Email|RefreshToken|ClientId)..."
+                android:hint="Email|Token|ID"
                 android:inputType="textMultiLine"
                 android:maxLines="4"
                 android:scrollbars="vertical"
@@ -147,6 +125,7 @@
                     android:id="@+id/copyEmailBtn"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:backgroundTint="@color/accent_teal"
                     android:text="Copy Email" />
             </LinearLayout>
 
@@ -155,6 +134,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
+                android:backgroundTint="@color/go_green"
                 android:text="GET CODE" />
 
             <TextView
@@ -162,7 +142,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -176,28 +156,21 @@
                 android:visibility="gone">
 
                 <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:text="OTP Code:"
-                    android:textColor="@color/title_text"
-                    android:textSize="11sp" />
-
-                <TextView
                     android:id="@+id/otpCode"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:text="------"
                     android:textColor="@color/otp_green"
-                    android:textSize="24sp"
+                    android:textSize="26sp"
                     android:textStyle="bold" />
 
                 <Button
                     android:id="@+id/copyCodeBtn"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Copy Code" />
+                    android:backgroundTint="@color/go_green"
+                    android:text="Copy" />
             </LinearLayout>
 
             <Button
@@ -206,7 +179,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:backgroundTint="@color/danger"
-                android:text="Clear Saved Data" />
+                android:text="Clear" />
         </LinearLayout>
 
         <!-- TAB 2: Name generator -->
@@ -221,10 +194,25 @@
             android:padding="10dp"
             android:visibility="gone">
 
+            <Spinner
+                android:id="@+id/countrySpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:id="@+id/domainView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:textColor="@color/accent_blue"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
             <RadioGroup
                 android:id="@+id/genderGroup"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
                 android:orientation="horizontal">
 
                 <RadioButton
@@ -258,7 +246,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:text="Generate Name" />
+                android:backgroundTint="@color/accent_orange"
+                android:text="Generate" />
 
             <LinearLayout
                 android:id="@+id/nameContainer"
@@ -269,14 +258,6 @@
                 android:orientation="vertical"
                 android:padding="8dp"
                 android:visibility="gone">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:text="Tap a name to copy it"
-                    android:textColor="@color/title_text"
-                    android:textSize="10sp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -295,7 +276,7 @@
                         android:padding="8dp"
                         android:text="---"
                         android:textColor="@color/accent_blue"
-                        android:textSize="15sp"
+                        android:textSize="16sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -309,16 +290,30 @@
                         android:gravity="center"
                         android:padding="8dp"
                         android:text="---"
-                        android:textColor="@color/accent_blue"
-                        android:textSize="15sp"
+                        android:textColor="@color/accent_pink"
+                        android:textSize="16sp"
                         android:textStyle="bold" />
                 </LinearLayout>
+
+                <TextView
+                    android:id="@+id/suggestedEmailView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:textColor="@color/accent_teal"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
 
                 <Button
                     android:id="@+id/copyNameBtn"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Copy Name" />
+                    android:backgroundTint="@color/accent_orange"
+                    android:text="Copy" />
             </LinearLayout>
 
             <TextView
@@ -330,7 +325,7 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Floating + Exit -->
+        <!-- Auto actions -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -340,20 +335,12 @@
             android:orientation="vertical"
             android:padding="10dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Auto OTP Actions"
-                android:textColor="@color/title_text"
-                android:textStyle="bold" />
-
             <CheckBox
                 android:id="@+id/autoCopyCheck"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
                 android:checked="true"
-                android:text="Auto-copy OTP to clipboard"
+                android:text="Auto-copy OTP"
                 android:textColor="@color/title_text"
                 android:textSize="13sp" />
 
@@ -362,7 +349,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="No app selected — OTP won't auto-open any app"
+                android:text="No auto-open app"
                 android:textColor="@color/title_text"
                 android:textSize="12sp"
                 android:textStyle="bold" />
@@ -372,13 +359,14 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:text="Select Auto-Open App" />
+                android:backgroundTint="@color/accent_teal"
+                android:text="Select App" />
 
             <Button
                 android:id="@+id/clearAppBtn"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Clear Selected App" />
+                android:text="Clear App" />
         </LinearLayout>
 
         <Button
@@ -386,7 +374,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="Enable Floating Widget" />
+            android:backgroundTint="@color/float_purple"
+            android:text="Floating Widget" />
 
         <Button
             android:id="@+id/exitBtn"
@@ -395,7 +384,7 @@
             android:layout_marginTop="6dp"
             android:layout_marginBottom="16dp"
             android:backgroundTint="@color/exit_red"
-            android:text="Exit App" />
+            android:text="Exit" />
 
     </LinearLayout>
 </ScrollView>

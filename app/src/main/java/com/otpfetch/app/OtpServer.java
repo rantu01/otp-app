@@ -208,7 +208,6 @@ public class OtpServer {
             List<GraphMsg> messages = fetchInboxAndJunk(token);
             OtpEntry result = tryExtractOTP(messages, email);
             if (result != null) {
-                log("OTP caught for " + email + ": " + result.code);
                 notifyNewOtp(email, result.code);
             }
             return result;
@@ -315,12 +314,7 @@ public class OtpServer {
                     }
                     updateWatchedToken(email, te);
                     tokenCache.put(email, te);
-                    log("Token refreshed for " + email);
                     return token;
-                }
-                // Only spam the log for the first attempt; fallbacks are expected to fail sometimes.
-                if (cid.equals(clientCandidates(preferredClient).get(0))) {
-                    log("Refresh with preferred client failed for " + email + ", trying fallbacks...");
                 }
             }
             // 2) The pasted "token" may already be an access token (Type 2 access-token variant).
@@ -331,7 +325,6 @@ public class OtpServer {
                 te.refreshToken = latestRefresh;
                 te.clientId = preferredClient == null ? "" : preferredClient;
                 tokenCache.put(email, te);
-                log("Using pasted token directly as access token for " + email);
                 return te.accessToken;
             }
         }
@@ -353,7 +346,6 @@ public class OtpServer {
                     }
                     updateWatchedToken(email, te);
                     tokenCache.put(email, te);
-                    log("Password auth succeeded for " + email);
                     return token;
                 }
             }
@@ -525,6 +517,11 @@ public class OtpServer {
             seen = Collections.synchronizedSet(new LinkedHashSet<String>());
             seenMessages.put(email, seen);
         }
+        // Collect unseen mails newest-first. A 6-digit mail that arrives
+        // AFTER a 5-digit one is the valid code — using the stale 5-digit
+        // code suspends the account. So: newest mail wins; a 6-digit code
+        // anywhere in the fresh batch beats an older 5-digit code.
+        List<GraphMsg> fresh = new ArrayList<>();
         synchronized (seen) {
             for (GraphMsg msg : messages) {
                 if (msg.id == null || msg.id.isEmpty() || seen.contains(msg.id)) continue;
@@ -538,12 +535,28 @@ public class OtpServer {
                 if (sender.contains("microsoft") || sender.contains("outlook") || subject.contains("Welcome")) {
                     continue;
                 }
-                String code = OtpHelper.extractFacebookOTP(subject + " " + (msg.bodyPreview != null ? msg.bodyPreview : ""));
-                if (code != null) {
-                    OtpEntry e = new OtpEntry(code, msg.receivedDateTime, msg.id, System.currentTimeMillis());
-                    otpCache.put(email, e);
-                    return e;
-                }
+                fresh.add(msg);
+            }
+        }
+        if (fresh.isEmpty()) return null;
+        // Pass 1: newest 6-digit code wins.
+        for (GraphMsg msg : fresh) {
+            String code = OtpHelper.extractFacebookOTP(
+                    msg.subject + " " + (msg.bodyPreview != null ? msg.bodyPreview : ""));
+            if (code != null && code.length() == 6) {
+                OtpEntry e = new OtpEntry(code, msg.receivedDateTime, msg.id, System.currentTimeMillis());
+                otpCache.put(email, e);
+                return e;
+            }
+        }
+        // Pass 2: fall back to newest 5-digit code.
+        for (GraphMsg msg : fresh) {
+            String code = OtpHelper.extractFacebookOTP(
+                    msg.subject + " " + (msg.bodyPreview != null ? msg.bodyPreview : ""));
+            if (code != null) {
+                OtpEntry e = new OtpEntry(code, msg.receivedDateTime, msg.id, System.currentTimeMillis());
+                otpCache.put(email, e);
+                return e;
             }
         }
         return null;
@@ -564,13 +577,6 @@ public class OtpServer {
     /** Full-account fetch (supports password + fallback clientIds). Keeps watching for auto-detect. */
     public FetchResult fetchOtp(OtpHelper.Account acc) {
         String email = acc.email;
-        log("OTP request: " + email);
-        OtpEntry cached = otpCache.get(email);
-        if (cached != null && System.currentTimeMillis() - cached.ts < OTP_CACHE_TTL_MS) {
-            log("Instant cache hit for " + email + ": " + cached.code);
-            notifyNewOtp(email, cached.code);
-            return new FetchResult(true, cached.code, null);
-        }
         // Keep watching after this call so re-sent OTPs are auto-detected by the poller.
         OtpHelper.Account prev = watchedAccounts.get(email);
         String pwd = acc.password != null && !acc.password.isEmpty() ? acc.password
@@ -582,12 +588,9 @@ public class OtpServer {
         OtpHelper.Account full = new OtpHelper.Account(email, tok, cid, pwd);
         watchedAccounts.put(email, full);
 
+        // NOTE: no instant cache return here. A stale cached 5-digit code
+        // must never shadow a freshly arrived 6-digit code.
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-            OtpEntry c = otpCache.get(email);
-            if (c != null && System.currentTimeMillis() - c.ts < OTP_CACHE_TTL_MS) {
-                notifyNewOtp(email, c.code);
-                return new FetchResult(true, c.code, null);
-            }
             String token = getAccessTokenForAccount(full);
             if (token == null) {
                 return new FetchResult(false, null, "Token refresh failed. Refresh Token might be dead.");
@@ -595,7 +598,6 @@ public class OtpServer {
             List<GraphMsg> messages = fetchInboxAndJunk(token);
             OtpEntry result = tryExtractOTP(messages, email);
             if (result != null) {
-                log("OTP found on attempt " + attempt + ": " + result.code);
                 notifyNewOtp(email, result.code);
                 return new FetchResult(true, result.code, null);
             }
@@ -603,8 +605,14 @@ public class OtpServer {
                 try { Thread.sleep(RETRY_DELAY_MS); } catch (InterruptedException e) { break; }
             }
         }
+        // Last resort: recent cache (covers "already shown" re-taps).
+        OtpEntry c = otpCache.get(email);
+        if (c != null && System.currentTimeMillis() - c.ts < OTP_CACHE_TTL_MS) {
+            notifyNewOtp(email, c.code);
+            return new FetchResult(true, c.code, null);
+        }
         // Leave the account watched: the background poller keeps watching for re-sent OTPs.
-        return new FetchResult(false, null, "OTP not arrived yet. Watching inbox — new codes will pop up automatically.");
+        return new FetchResult(false, null, "No code yet — watching inbox.");
     }
 
     // ================= auto-detect fan-out (popup + notification) =================

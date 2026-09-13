@@ -10,6 +10,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
@@ -25,12 +26,15 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Scroller;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -41,14 +45,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Floating chat-head style overlay (Messenger Chat Head behaviour).
+ * Floating chat-head overlay.
  *
- * - Bubble stays on top of other apps, draggable, always visible in
- *   light AND dark mode (explicit blue oval background).
- * - Tap the bubble -> opens a popup with ALL app actions (server toggle,
- *   OTP fetcher, name generator). Tapping anywhere outside the popup
- *   card (or the Close button) dismisses it, exactly like Messenger.
- * - Removed ONLY when the service is stopped (Exit App stops it explicitly).
+ * - Small bubble (44dp), draggable, tap to open compact popup.
+ * - Popup: compact centered card (300dp) with ✕ in the top corner.
+ *   Tapping outside the card dismisses it.
  */
 public class FloatingService extends Service {
 
@@ -74,6 +75,11 @@ public class FloatingService extends Service {
     private TextView pCode;
     private Button pCopyCode;
     private Button pClear;
+    private Spinner pCountrySpinner;
+    private TextView pDomain;
+    private TextView pSuggestedEmail;
+    private int pCountry = 0;
+    private boolean pProgrammaticCountry = false;
     private Button pGenderMale, pGenderFemale, pGenderRandom;
     private String pGender = "male";
     private TextView pFirstName, pLastName;
@@ -91,7 +97,7 @@ public class FloatingService extends Service {
     private final AutoFetchManager.StatusListener autoFetchStatus =
             new AutoFetchManager.StatusListener() {
                 @Override public void onAutoFetchStarted(String email) {
-                    main.post(() -> popupStatus("Auto-fetching OTP for " + email + "...", false));
+                    main.post(() -> popupStatus("Loading " + email + "...", false));
                 }
                 @Override public void onAutoFetchError(String email, String error) {
                     main.post(() -> popupStatus(error, true));
@@ -125,6 +131,7 @@ public class FloatingService extends Service {
             if (savedCode != null && !savedCode.isEmpty()) latestCode = savedCode;
         }
         pGender = OtpAutoActions.getGender(this);
+        pCountry = OtpAutoActions.getCountry(this);
         OtpServer.getInstance().init(getApplicationContext());
         OtpServer.getInstance().addOtpListener(autoOtpListener);
         prefs.registerOnSharedPreferenceChangeListener(prefsListener);
@@ -158,6 +165,17 @@ public class FloatingService extends Service {
                     pProgrammaticGender = false;
                     refreshGenderUi();
                 }
+            } else if (OtpAutoActions.KEY_COUNTRY.equals(key)) {
+                int c = OtpAutoActions.getCountry(this);
+                if (c != pCountry && c >= 0 && c < CountryData.COUNTRIES.length) {
+                    pCountry = c;
+                    refreshDomainUi();
+                    if (pCountrySpinner != null) {
+                        pProgrammaticCountry = true;
+                        pCountrySpinner.setSelection(c);
+                        pProgrammaticCountry = false;
+                    }
+                }
             }
         } catch (Exception ignored) {}
     }
@@ -166,18 +184,9 @@ public class FloatingService extends Service {
     private void onAutoOtp(String email, String code) {
         updateCode(code);
         try {
-            if (popupView == null) return; // do NOT pop the popup open — selected app opens instead
+            if (popupView == null) return;
             if (pCode != null) pCode.setText(code);
-            // Copy + auto-open already ran centrally in OtpServer; just report it here.
-            if (pStatus != null) {
-                String msg = "New OTP auto-detected for " + email + "! Auto-copied.";
-                String pkg = OtpAutoActions.getSelectedPackage(this);
-                String label = OtpAutoActions.getSelectedLabel(this);
-                if (pkg != null && !pkg.isEmpty()) {
-                    msg += " Opening " + (label.isEmpty() ? pkg : label) + ".";
-                }
-                popupStatus(msg, false);
-            }
+            if (pStatus != null) popupStatus("✓ " + email + " · copied", false);
         } catch (Exception ignored) {}
     }
 
@@ -196,32 +205,33 @@ public class FloatingService extends Service {
         PendingIntent pi = PendingIntent.getActivity(this, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("rantuOTP is floating")
-                .setContentText("Tap the bubble for actions. Use Exit App to close fully.")
+                .setContentTitle("rantuOTP")
+                .setContentText("Tap bubble for OTP. Exit App closes fully.")
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .setContentIntent(pi)
                 .setOngoing(true)
                 .build();
     }
 
-    // ================= bubble =================
+    // ================= bubble (small 44dp) =================
 
     private void showBubble() {
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         TextView tv = new TextView(this);
         tv.setText(latestCode.isEmpty() ? "OTP" : latestCode);
-        tv.setTextSize(14);
+        tv.setTextSize(12);
         tv.setTextColor(getColor(R.color.bubble_text));
         tv.setGravity(Gravity.CENTER);
-        int pad = dp(12);
+        int pad = dp(8);
         tv.setPadding(pad, pad, pad, pad);
         GradientDrawable oval = new GradientDrawable();
         oval.setShape(GradientDrawable.OVAL);
         oval.setColor(getColor(R.color.bubble_bg));
+        oval.setStroke(dp(2), 0xFFFFFFFF);
         tv.setBackground(oval);
-        tv.setMinWidth(dp(56));
-        tv.setMinHeight(dp(56));
+        tv.setMinWidth(dp(44));
+        tv.setMinHeight(dp(44));
         bubbleText = tv;
         bubble = tv;
 
@@ -272,7 +282,7 @@ public class FloatingService extends Service {
         catch (Exception ignored) {}
     }
 
-    // ================= Messenger-style popup =================
+    // ================= compact popup (300dp, ✕ top corner, tap-outside closes) =================
 
     private void togglePopup() {
         if (popupView != null) hidePopup();
@@ -280,37 +290,81 @@ public class FloatingService extends Service {
     }
 
     private void showPopup() {
-        // Full-screen dim layer: tapping anywhere outside the card dismisses,
-        // exactly like Messenger Chat Heads.
+        pCountry = OtpAutoActions.getCountry(this);
+        // Full-screen dim layer: tapping anywhere outside the card dismisses.
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(getColor(R.color.popup_dim));
+        root.setClickable(true);
+        root.setOnClickListener(v -> hidePopup());
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        int outer = dp(24);
-        scroll.setPadding(outer, outer, outer, outer);
-        scroll.setClickable(true);
-        scroll.setOnClickListener(v -> hidePopup());
-
+        // Compact centered card (slightly smaller, easier to handle).
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundColor(getColor(R.color.card_bg));
-        int pad = dp(14);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(getColor(R.color.card_bg));
+        cardBg.setCornerRadius(dp(16));
+        card.setBackground(cardBg);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) card.setElevation(dp(8));
+        int pad = dp(10);
         card.setPadding(pad, pad, pad, pad);
         card.setClickable(true); // consume taps so they don't dismiss
         card.setOnClickListener(v -> { });
 
-        card.addView(sectionTitle("rantuOTP", 17));
-        pServerStatus = smallText("");
-        card.addView(pServerStatus);
-        pServerBtn = actionButton("Start Server");
-        pServerBtn.setOnClickListener(v -> toggleServer());
-        card.addView(pServerBtn);
+        int cardW = dp(300);
+        int maxH = (int) (getResources().getDisplayMetrics().heightPixels * 0.8);
+        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
+                cardW, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
 
-        card.addView(sectionTitle("OTP Fetcher", 14));
+        // Header: title + ✕ top corner.
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = new TextView(this);
+        title.setText("rantuOTP");
+        title.setTextSize(15);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        title.setTextColor(getColor(R.color.accent_blue));
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        title.setLayoutParams(titleLp);
+        header.addView(title);
+        Button closeX = new Button(this);
+        closeX.setText("✕");
+        closeX.setTextSize(13);
+        LinearLayout.LayoutParams xLp = new LinearLayout.LayoutParams(
+                dp(38), dp(38));
+        closeX.setLayoutParams(xLp);
+        tint(closeX, R.color.exit_red);
+        closeX.setOnClickListener(v -> hidePopup());
+        header.addView(closeX);
+        card.addView(header);
+
+        // Scrollable compact body.
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, Math.min(maxH, dp(460)));
+        scroll.setLayoutParams(scrollLp);
+        // Taps on empty scroll area outside inner content also dismiss.
+        scroll.setOnClickListener(v -> hidePopup());
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setClickable(true);
+        body.setOnClickListener(v -> { });
+
+        pServerStatus = smallText("");
+        pServerStatus.setGravity(Gravity.CENTER);
+        body.addView(pServerStatus);
+        pServerBtn = actionButton("Start");
+        tint(pServerBtn, R.color.float_purple);
+        pServerBtn.setOnClickListener(v -> toggleServer());
+        body.addView(pServerBtn);
+
+        body.addView(sectionTitle("OTP", 13));
 
         pAccount = new EditText(this);
-        pAccount.setHint("Paste Account Data (Email|RefreshToken|ClientId)...");
+        pAccount.setHint("Email|Token|ID");
         pAccount.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         pAccount.setLines(3);
         pAccount.setMaxLines(3);
@@ -327,43 +381,47 @@ public class FloatingService extends Service {
         pAccount.setBackgroundColor(getColor(R.color.info_bg));
         pAccount.setPadding(dp(8), dp(8), dp(8), dp(8));
         pAccount.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(70)));
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(56)));
         pAccount.setText(prefs.getString(KEY_SAVED, ""));
-        card.addView(pAccount);
+        body.addView(pAccount);
 
         pEmail = new TextView(this);
         pEmail.setGravity(Gravity.CENTER);
         pEmail.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         pEmail.setTextColor(getColor(R.color.accent_blue));
         pEmail.setVisibility(View.GONE);
-        card.addView(pEmail);
+        body.addView(pEmail);
 
         pCopyEmail = actionButton("Copy Email");
+        tint(pCopyEmail, R.color.accent_teal);
         pCopyEmail.setVisibility(View.GONE);
         pCopyEmail.setOnClickListener(v -> copy(pEmail.getText().toString()));
-        card.addView(pCopyEmail);
+        body.addView(pCopyEmail);
 
         pGetCode = actionButton("GET CODE");
+        tint(pGetCode, R.color.go_green);
         pGetCode.setOnClickListener(v -> popupGetCode());
-        card.addView(pGetCode);
+        body.addView(pGetCode);
 
         pStatus = smallText("");
         pStatus.setGravity(Gravity.CENTER);
-        card.addView(pStatus);
+        body.addView(pStatus);
 
         pCode = new TextView(this);
         pCode.setGravity(Gravity.CENTER);
-        pCode.setTextSize(22);
+        pCode.setTextSize(20);
         pCode.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         pCode.setTextColor(getColor(R.color.otp_green));
         pCode.setText(latestCode.isEmpty() ? "------" : latestCode);
-        card.addView(pCode);
+        body.addView(pCode);
 
-        pCopyCode = actionButton("Copy Code");
+        pCopyCode = actionButton("Copy");
+        tint(pCopyCode, R.color.go_green);
         pCopyCode.setOnClickListener(v -> copy(pCode.getText().toString()));
-        card.addView(pCopyCode);
+        body.addView(pCopyCode);
 
-        pClear = actionButton("Clear Saved Data");
+        pClear = actionButton("Clear");
+        tint(pClear, R.color.danger);
         pClear.setOnClickListener(v -> {
             pAccount.setText("");
             prefs.edit().remove(KEY_SAVED).apply();
@@ -371,9 +429,35 @@ public class FloatingService extends Service {
             pStatus.setText("");
             pCode.setText("------");
         });
-        card.addView(pClear);
+        body.addView(pClear);
 
-        card.addView(sectionTitle("US Name Gen", 14));
+        body.addView(sectionTitle("Names", 13));
+
+        pCountry = OtpAutoActions.getCountry(this);
+        pCountrySpinner = new Spinner(this);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, CountryData.displayNames());
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        pCountrySpinner.setAdapter(adapter);
+        if (pCountry >= 0 && pCountry < CountryData.COUNTRIES.length) {
+            pCountrySpinner.setSelection(pCountry);
+        }
+        pCountrySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                if (pProgrammaticCountry) return;
+                pCountry = pos;
+                OtpAutoActions.setCountry(FloatingService.this, pos);
+                refreshDomainUi();
+            }
+            @Override public void onNothingSelected(AdapterView<?> p) {}
+        });
+        body.addView(pCountrySpinner);
+
+        pDomain = smallText("");
+        pDomain.setGravity(Gravity.CENTER);
+        pDomain.setTextColor(getColor(R.color.accent_blue));
+        body.addView(pDomain);
+        refreshDomainUi();
 
         pGender = OtpAutoActions.getGender(this);
         LinearLayout genderRow = new LinearLayout(this);
@@ -384,42 +468,48 @@ public class FloatingService extends Service {
         genderRow.addView(pGenderMale);
         genderRow.addView(pGenderFemale);
         genderRow.addView(pGenderRandom);
-        card.addView(genderRow);
+        body.addView(genderRow);
         refreshGenderUi();
 
-        pGenName = actionButton("Generate Name");
-        TextView tapHint = smallText("Tap a name to copy it");
-        tapHint.setGravity(Gravity.CENTER);
-        card.addView(pGenName);
-        card.addView(tapHint);
+        pGenName = actionButton("Generate");
+        tint(pGenName, R.color.accent_orange);
         LinearLayout nameRow = new LinearLayout(this);
         nameRow.setOrientation(LinearLayout.HORIZONTAL);
-        pFirstName = nameField("---");
-        pLastName = nameField("---");
+        pFirstName = nameField("---", R.color.accent_blue);
+        pLastName = nameField("---", R.color.accent_pink);
         pFirstName.setOnClickListener(v -> {
             copy(pFirstName.getText().toString());
-            toast("First name copied");
+            toast("Copied");
         });
         pLastName.setOnClickListener(v -> {
             copy(pLastName.getText().toString());
-            toast("Last name copied");
+            toast("Copied");
         });
         nameRow.addView(pFirstName);
         nameRow.addView(pLastName);
-        card.addView(nameRow);
+        pSuggestedEmail = smallText("");
+        pSuggestedEmail.setGravity(Gravity.CENTER);
+        pSuggestedEmail.setTextColor(getColor(R.color.accent_teal));
+        pSuggestedEmail.setClickable(true);
+        pSuggestedEmail.setOnClickListener(v -> copy(pSuggestedEmail.getText().toString()));
+        body.addView(pGenName);
+        body.addView(nameRow);
+        body.addView(pSuggestedEmail);
         String savedName = OtpAutoActions.getGenName(this);
         if (savedName != null && !savedName.isEmpty()) showPopupName(savedName);
-        Button pCopyName = actionButton("Copy Name");
+        Button pCopyName = actionButton("Copy");
+        tint(pCopyName, R.color.accent_orange);
         pGenName.setOnClickListener(v -> {
-            String name = OtpHelper.generateName(pGender);
+            String name = OtpHelper.generateName(pCountry, pGender);
             OtpAutoActions.setGenName(this, name);
             showPopupName(name);
         });
         pCopyName.setOnClickListener(v -> copy(
                 (pFirstName.getText().toString() + " " + pLastName.getText().toString()).trim()));
-        card.addView(pCopyName);
+        body.addView(pCopyName);
 
-        Button openApp = actionButton("Open Full App");
+        Button openApp = actionButton("Full App");
+        tint(openApp, R.color.accent_teal);
         openApp.setOnClickListener(v -> {
             hidePopup();
             Intent i = new Intent(this, MainActivity.class);
@@ -427,10 +517,7 @@ public class FloatingService extends Service {
                     | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(i);
         });
-        Button close = actionButton("Close");
-        close.setOnClickListener(v -> hidePopup());
-        card.addView(openApp);
-        card.addView(close);
+        body.addView(openApp);
 
         pAccount.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
@@ -451,11 +538,9 @@ public class FloatingService extends Service {
         }
         refreshPopupServerUi();
 
-        scroll.addView(card);
-        root.addView(scroll,
-                new FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT));
+        scroll.addView(body);
+        card.addView(scroll);
+        root.addView(card, cardLp);
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -488,12 +573,24 @@ public class FloatingService extends Service {
         pCopyEmail = null; pGetCode = null; pStatus = null; pCode = null;
         pCopyCode = null; pClear = null; pFirstName = null; pLastName = null; pGenName = null;
         pGenderMale = null; pGenderFemale = null; pGenderRandom = null;
+        pCountrySpinner = null; pDomain = null; pSuggestedEmail = null;
     }
 
     private void showPopupName(String fullName) {
         if (pFirstName == null || pLastName == null) return;
         pFirstName.setText(firstOf(fullName));
         pLastName.setText(lastOf(fullName));
+        if (pSuggestedEmail != null) {
+            String sug = OtpHelper.suggestEmail(fullName, pCountry);
+            pSuggestedEmail.setText(sug == null ? "" : sug);
+        }
+    }
+
+    private void refreshDomainUi() {
+        if (pDomain == null) return;
+        try {
+            pDomain.setText("@" + CountryData.byIndex(pCountry).domain);
+        } catch (Exception ignored) {}
     }
 
     private static String firstOf(String fullName) {
@@ -508,13 +605,13 @@ public class FloatingService extends Service {
         return parts.length < 2 ? "" : parts[parts.length - 1];
     }
 
-    private TextView nameField(String text) {
+    private TextView nameField(String text, int colorRes) {
         TextView tv = new TextView(this);
         tv.setText(text);
         tv.setGravity(Gravity.CENTER);
         tv.setTextSize(15);
         tv.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        tv.setTextColor(getColor(R.color.accent_blue));
+        tv.setTextColor(getColor(colorRes));
         tv.setPadding(dp(8), dp(8), dp(8), dp(8));
         tv.setClickable(true);
         tv.setFocusable(true);
@@ -532,7 +629,7 @@ public class FloatingService extends Service {
                 if (OtpServer.getInstance().isRunning()) OtpServer.getInstance().stop();
                 else OtpServer.getInstance().start();
             } catch (Exception e) {
-                toast("Server failed: " + e.getMessage());
+                toast("Failed: " + e.getMessage());
             }
             main.post(this::refreshPopupServerUi);
         });
@@ -541,9 +638,9 @@ public class FloatingService extends Service {
     private void refreshPopupServerUi() {
         if (pServerStatus == null || pServerBtn == null) return;
         boolean running = OtpServer.getInstance().isRunning();
-        pServerStatus.setText(running ? "Server RUNNING — :3000" : "Server STOPPED");
+        pServerStatus.setText(running ? "● Running :3000" : "○ Stopped");
         pServerStatus.setTextColor(getColor(running ? R.color.success : R.color.error));
-        pServerBtn.setText(running ? "Stop Server" : "Start Server");
+        pServerBtn.setText(running ? "Stop" : "Start");
     }
 
     private void refreshPopupEmail(String data) {
@@ -563,7 +660,7 @@ public class FloatingService extends Service {
         if (pAccount == null) return;
         String data = pAccount.getText().toString().trim();
         if (data.isEmpty()) {
-            popupStatus("Please paste account data first!", true);
+            popupStatus("Paste account data first", true);
             return;
         }
         final OtpHelper.Account acc;
@@ -576,12 +673,12 @@ public class FloatingService extends Service {
         if (!OtpServer.getInstance().isRunning()) {
             try { OtpServer.getInstance().start(); }
             catch (Exception e) {
-                popupStatus("Server failed to start: " + e.getMessage(), true);
+                popupStatus("Start failed: " + e.getMessage(), true);
                 return;
             }
             refreshPopupServerUi();
         }
-        popupStatus("Connecting to Microsoft Graph API...", false);
+        popupStatus("Loading...", false);
         if (pGetCode != null) pGetCode.setEnabled(false);
         net.execute(() -> {
             OtpServer.FetchResult r =
@@ -590,9 +687,9 @@ public class FloatingService extends Service {
                 if (pGetCode != null) pGetCode.setEnabled(true);
                 if (r.success) {
                     updateCode(r.code);
-                    popupStatus("OTP Fetched Successfully! Auto-copied. Watching inbox — new codes pop up automatically.", false);
+                    popupStatus("✓ Copied", false);
                 } else {
-                    popupStatus(r.error != null ? r.error : "OTP Not Found", true);
+                    popupStatus(r.error != null ? r.error : "Not found", true);
                 }
             });
         });
@@ -606,14 +703,22 @@ public class FloatingService extends Service {
 
     // ---------- popup view helpers ----------
 
+    private void tint(Button b, int colorRes) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                b.setBackgroundTintList(ColorStateList.valueOf(getColor(colorRes)));
+            }
+        } catch (Exception ignored) {}
+    }
+
     private TextView sectionTitle(String text, int sp) {
         TextView tv = new TextView(this);
         tv.setText(text);
         tv.setTextSize(sp);
         tv.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         tv.setGravity(Gravity.CENTER);
-        tv.setTextColor(getColor(R.color.title_text));
-        tv.setPadding(0, dp(8), 0, dp(4));
+        tv.setTextColor(getColor(R.color.accent_blue));
+        tv.setPadding(0, dp(6), 0, dp(2));
         return tv;
     }
 
@@ -629,6 +734,7 @@ public class FloatingService extends Service {
     private Button actionButton(String text) {
         Button b = new Button(this);
         b.setText(text);
+        b.setTextSize(13);
         b.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -665,7 +771,7 @@ public class FloatingService extends Service {
     private void copy(String text) {
         ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("rantuOTP", text));
-        toast("Copied to clipboard");
+        toast("Copied");
     }
 
     private void toast(String msg) {

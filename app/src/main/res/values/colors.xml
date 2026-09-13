@@ -1,19 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Light mode: same look as the original extension popup -->
-    <color name="screen_bg">#F4F6F9</color>
+    <!-- Vibrant light theme -->
+    <color name="screen_bg">#EDE7F6</color>
     <color name="card_bg">#FFFFFF</color>
-    <color name="title_text">#333333</color>
-    <color name="accent_blue">#0056B3</color>
-    <color name="info_bg">#EEF5FF</color>
-    <color name="otp_green">#1E8E3E</color>
-    <color name="success">#1E8E3E</color>
-    <color name="error">#B00020</color>
-    <color name="danger">#DC3545</color>
-    <color name="exit_red">#B00020</color>
-    <color name="log_bg">#101418</color>
+    <color name="title_text">#2D2A4A</color>
+    <color name="accent_blue">#6C3CE0</color>
+    <color name="accent_pink">#E040FB</color>
+    <color name="accent_teal">#00ACC1</color>
+    <color name="accent_orange">#FB8C00</color>
+    <color name="info_bg">#F3EFFF</color>
+    <color name="otp_green">#00A152</color>
+    <color name="success">#00A152</color>
+    <color name="error">#E53935</color>
+    <color name="danger">#E53935</color>
+    <color name="exit_red">#E53935</color>
+    <color name="go_green">#00A152</color>
+    <color name="float_purple">#6C3CE0</color>
+    <color name="header_start">#7C4DFF</color>
+    <color name="header_end">#E040FB</color>
+    <color name="tab_active">#6C3CE0</color>
+    <color name="log_bg">#1A1430</color>
     <color name="log_text">#7CFC98</color>
-    <color name="bubble_bg">#007BFF</color>
+    <color name="bubble_bg">#7C4DFF</color>
     <color name="bubble_text">#FFFFFF</color>
     <color name="popup_dim">#99000000</color>
     <color name="input_hint">#8A8F98</color>
