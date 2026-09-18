@@ -1042,17 +1042,18 @@ public class MainActivity extends AppCompatActivity {
                 if (now0 - lastVersionCheckAt > VERSION_CHECK_TTL_MS) {
                     lastVersionCheckAt = now0;
                     String installed = ApiClient.appVersion(MainActivity.this);
-                ApiClient.Resp ver = ApiClient.get(this,
-                        "/api/versions/check?platform=android&version=" + installed, false);
-                // Updates are advisory only: record availability, notify once,
-                // and ALWAYS continue to the access checks below (never block).
-                if (ver.ok() && (ver.json.optBoolean("forceUpdate", false)
-                        || ver.json.optBoolean("updateRequired", false))) {
-                    updateAvailable = true;
-                    updateUrl = ver.json.optString("updateUrl", "");
-                    updateMessage = ver.json.optString("message", "");
-                    latestVersion = ver.json.optString("latestVersion", "");
-                    main.post(() -> showUpdateNotice(false));
+                    ApiClient.Resp ver = ApiClient.get(this,
+                            "/api/versions/check?platform=android&version=" + installed, false);
+                    // Updates are advisory only: record availability, notify once,
+                    // and ALWAYS continue to the access checks below (never block).
+                    if (ver.ok() && (ver.json.optBoolean("forceUpdate", false)
+                            || ver.json.optBoolean("updateRequired", false))) {
+                        updateAvailable = true;
+                        updateUrl = ver.json.optString("updateUrl", "");
+                        updateMessage = ver.json.optString("message", "");
+                        latestVersion = ver.json.optString("latestVersion", "");
+                        main.post(() -> showUpdateNotice(false));
+                    }
                 }
             } catch (Exception e) {
                 accessAllowed = false;

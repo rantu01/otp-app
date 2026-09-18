@@ -116,7 +116,6 @@ public class PackageActivity extends AppCompatActivity {
                 final JSONObject current;
                 try { current = subs != null && subs.ok() ? subs.json.optJSONObject("current") : null; }
                 catch (Exception e) { throw new RuntimeException(e); }
-                final JSONObject curFinal = current;
                 final String currentLine = currentPackageLine(current);
                 runOnUiThread(() -> {
                     renderPackages();
