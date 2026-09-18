@@ -14,3 +14,11 @@ app/release/
 
 # Wrapper jar (we build with system Gradle in CI, see .github/workflows/)
 gradle/wrapper/gradle-wrapper.jar
+
+# Shared backend (Node)
+backend/node_modules/
+backend/db.json
+backend/.env
+
+# Admin app module build outputs
+admin-app/build/

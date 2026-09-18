@@ -20,6 +20,50 @@
             android:textSize="20sp"
             android:textStyle="bold" />
 
+        <!-- Access / account bar (backend-validated; does not change OTP UI below) -->
+        <LinearLayout
+            android:id="@+id/accessBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical"
+            android:background="@color/card_bg"
+            android:padding="8dp">
+
+            <TextView
+                android:id="@+id/accessStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Checking access..."
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/accountBtn"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Account"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/packagesBtn"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:text="Packages"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
         <!-- Server card -->
         <LinearLayout
             android:layout_width="match_parent"

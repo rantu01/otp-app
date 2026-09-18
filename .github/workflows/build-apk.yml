@@ -29,12 +29,19 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Build user + admin debug APKs
+        run: gradle :app:assembleDebug :admin-app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Upload user APK
         uses: actions/upload-artifact@v4
         with:
           name: rantuOTP-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload admin APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rantuOTP-admin-apk
+          path: admin-app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

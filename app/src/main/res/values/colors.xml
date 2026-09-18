@@ -25,4 +25,5 @@
     <color name="bubble_text">#FFFFFF</color>
     <color name="popup_dim">#99000000</color>
     <color name="input_hint">#8A8F98</color>
+    <color name="ic_launcher_background">#000000</color>
 </resources>

@@ -106,6 +106,12 @@ public class MainActivity extends AppCompatActivity {
     // floating + exit
     private Button floatingBtn, exitBtn;
 
+    // access / subscription gate (shared backend; OTP UI below is unchanged)
+    private TextView accessStatus;
+    private volatile boolean accessAllowed = true;
+    private volatile String accessReason = "UNKNOWN";
+    private volatile boolean gateDialogShowing = false;
+
     // auto OTP actions
     private CheckBox autoCopyCheck;
     private TextView selectedAppLabel;
@@ -146,6 +152,8 @@ public class MainActivity extends AppCompatActivity {
         bindNameTab();
         bindAutoActions();
         bindFloatingAndExit();
+        bindAccessBar();
+        enforceAccessGate();
 
         // restore saved account data (parity with chrome.storage.local)
         String saved = prefs.getString(KEY_SAVED, "");
@@ -318,6 +326,7 @@ public class MainActivity extends AppCompatActivity {
 
         floatingBtn = findViewById(R.id.floatingBtn);
         exitBtn = findViewById(R.id.exitBtn);
+        accessStatus = findViewById(R.id.accessStatus);
 
         autoCopyCheck = findViewById(R.id.autoCopyCheck);
         selectedAppLabel = findViewById(R.id.selectedAppLabel);
@@ -437,6 +446,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void onGetCode() {
+        // Backend-validated gate: blocked/expired users cannot use protected features.
+        if (SessionManager.isLoggedIn(this) && !accessAllowed) {
+            showStatus("Access blocked (" + accessReason + "). Open Packages.", true);
+            toast("Access blocked — check Packages");
+            return;
+        }
         String data = accountDataInput.getText().toString().trim();
         if (data.isEmpty()) {
             showStatus("Paste account data first", true);
@@ -676,6 +691,7 @@ public class MainActivity extends AppCompatActivity {
             }
             refreshSelectedAppLabel();
             refreshServerUi();
+            enforceAccessGate();
         } catch (Exception ignored) {}
     }
 
@@ -731,6 +747,184 @@ public class MainActivity extends AppCompatActivity {
         net.shutdownNow();
         finishAffinity();
         System.exit(0);
+    }
+
+    // ---------------- access gate (auth + version + subscription) ----------------
+
+    private void bindAccessBar() {
+        Button accountBtn = findViewById(R.id.accountBtn);
+        Button packagesBtn = findViewById(R.id.packagesBtn);
+        if (accountBtn != null) {
+            accountBtn.setOnClickListener(v -> {
+                if (SessionManager.isLoggedIn(this)) {
+                    org.json.JSONObject u = SessionManager.getUser(this);
+                    String info = u == null ? "Logged in" : u.optString("name", "") + " (" + u.optString("email", "") + u.optString("phone", "") + ")";
+                    new AlertDialog.Builder(this)
+                            .setTitle("Account")
+                            .setMessage(info + "\nServer: " + SessionManager.getBaseUrl(this)
+                                    + "\nAccess: " + accessReason)
+                            .setPositiveButton("Refresh", (d, w) -> enforceAccessGate())
+                            .setNegativeButton("Logout", (d, w) -> {
+                                SessionManager.logout(this);
+                                accessAllowed = true;
+                                accessReason = "LOGGED_OUT";
+                                setAccessText("Not logged in");
+                                startActivity(new Intent(this, AuthActivity.class));
+                            })
+                            .show();
+                } else {
+                    startActivity(new Intent(this, AuthActivity.class));
+                }
+            });
+        }
+        if (packagesBtn != null) {
+            packagesBtn.setOnClickListener(v -> {
+                if (!SessionManager.isLoggedIn(this)) {
+                    startActivity(new Intent(this, AuthActivity.class));
+                    return;
+                }
+                startActivity(new Intent(this, PackageActivity.class));
+            });
+        }
+    }
+
+    private void setAccessText(final String s) {
+        main.post(() -> {
+            if (accessStatus != null) accessStatus.setText(s);
+        });
+    }
+
+    /**
+     * Startup flow: version check -> auth -> account/access/package check.
+     * Fail-open when the backend is unreachable (offline): OTP keeps working
+     * and the bar shows "Offline". Fail-closed when backend explicitly denies.
+     */
+    private void enforceAccessGate() {
+        net.execute(() -> {
+            try {
+                String installed = ApiClient.appVersion(MainActivity.this);
+                ApiClient.Resp ver = ApiClient.get(this,
+                        "/api/versions/check?platform=android&version=" + installed, false);
+                if (ver.ok() && ver.json.optBoolean("forceUpdate", false)) {
+                    accessAllowed = false;
+                    accessReason = "FORCE_UPDATE";
+                    setAccessText("Update required");
+                    main.post(() -> showForceUpdate(
+                            ver.json.optString("updateUrl", ""),
+                            ver.json.optString("message", "Please update to continue.")));
+                    return;
+                }
+            } catch (Exception e) {
+                setAccessText("Offline — access not verified");
+                return; // no internet / backend down: don't brick the app
+            }
+            if (!SessionManager.isLoggedIn(this)) {
+                accessAllowed = true; // allow local OTP until login; gate re-checks after login
+                accessReason = "NOT_LOGGED_IN";
+                setAccessText("Not logged in — tap Account");
+                main.post(() -> {
+                    if (!gateDialogShowing) {
+                        gateDialogShowing = true;
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("Login required")
+                                .setMessage("Please login to verify your package access.")
+                                .setPositiveButton("Login", (d, w) -> {
+                                    gateDialogShowing = false;
+                                    startActivity(new Intent(MainActivity.this, AuthActivity.class));
+                                })
+                                .setNegativeButton("Later", (d, w) -> gateDialogShowing = false)
+                                .show();
+                    }
+                });
+                return;
+            }
+            try {
+                ApiClient.Resp r = ApiClient.get(this, "/api/access/status", true);
+                if (r.code == 401) {
+                    SessionManager.logout(this);
+                    accessAllowed = true;
+                    accessReason = "SESSION_EXPIRED";
+                    setAccessText("Session expired — tap Account");
+                    return;
+                }
+                if (!r.ok()) {
+                    setAccessText("Offline — access not verified");
+                    return;
+                }
+                org.json.JSONObject access = r.json.optJSONObject("access");
+                String reason = access == null ? "UNKNOWN" : access.optString("reason", "UNKNOWN");
+                boolean allowed = access != null && access.optBoolean("allowed", false);
+                accessAllowed = allowed;
+                accessReason = reason;
+                if (allowed) {
+                    String exp = access.optString("packageExpireDate", "");
+                    setAccessText("✓ Active: " + access.optString("packageName", "package") + (exp.isEmpty() ? "" : " till " + exp.substring(0, 10)));
+                } else if ("NO_PACKAGE".equals(reason)) {
+                    setAccessText("No active package — tap Packages");
+                    main.post(this::showNoPackage);
+                } else {
+                    setAccessText("Access denied (" + reason + ")");
+                    main.post(() -> showAccessDenied(access == null ? "Access denied." : access.optString("message", "Access denied.")));
+                }
+            } catch (Exception e) {
+                setAccessText("Offline — access not verified");
+            }
+        });
+    }
+
+    private void showForceUpdate(String url, String message) {
+        if (gateDialogShowing) return;
+        gateDialogShowing = true;
+        new AlertDialog.Builder(this)
+                .setTitle("Update required")
+                .setMessage(message.isEmpty() ? "Your app version is no longer supported." : message)
+                .setCancelable(false)
+                .setPositiveButton("Update Now", (d, w) -> {
+                    try {
+                        if (!url.isEmpty()) startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+                        else Toast.makeText(this, "Ask admin for the new APK", Toast.LENGTH_LONG).show();
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Invalid update URL", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Recheck", (d, w) -> {
+                    gateDialogShowing = false;
+                    enforceAccessGate();
+                })
+                .show();
+    }
+
+    private void showAccessDenied(String message) {
+        if (gateDialogShowing) return;
+        gateDialogShowing = true;
+        new AlertDialog.Builder(this)
+                .setTitle("Access Denied")
+                .setMessage(message)
+                .setCancelable(false)
+                .setPositiveButton("Recheck", (d, w) -> {
+                    gateDialogShowing = false;
+                    enforceAccessGate();
+                })
+                .setNegativeButton("Logout", (d, w) -> {
+                    gateDialogShowing = false;
+                    SessionManager.logout(this);
+                    startActivity(new Intent(this, AuthActivity.class));
+                })
+                .show();
+    }
+
+    private void showNoPackage() {
+        if (gateDialogShowing) return;
+        gateDialogShowing = true;
+        new AlertDialog.Builder(this)
+                .setTitle("No Active Package")
+                .setMessage("Choose a package and complete payment to use the app.")
+                .setPositiveButton("View Packages", (d, w) -> {
+                    gateDialogShowing = false;
+                    startActivity(new Intent(this, PackageActivity.class));
+                })
+                .setNegativeButton("Later", (d, w) -> gateDialogShowing = false)
+                .show();
     }
 
     // ---------------- helpers ----------------
