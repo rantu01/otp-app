@@ -69,8 +69,9 @@ public class PackageActivity extends AppCompatActivity {
         statusView.setText("Loading packages...");
         net.execute(() -> {
             try {
-                // Live server gate first: approved -> Home, blocked -> Auth.
-                // Only PENDING / NO_PACKAGE accounts may stay on this screen.
+                // Live server gate: blocked accounts are bounced to Auth.
+                // PENDING / NO_PACKAGE accounts use this screen, and active
+                // accounts may also open it to view/extend packages.
                 final AccessGate.Result gate;
                 try {
                     gate = AccessGate.check(this);
@@ -78,17 +79,7 @@ public class PackageActivity extends AppCompatActivity {
                     runOnUiThread(this::showOfflineBlock);
                     return;
                 }
-                if (gate.allowed) {
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, "Package active — opening app", Toast.LENGTH_SHORT).show();
-                        Intent i = new Intent(this, MainActivity.class);
-                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                        startActivity(i);
-                        finish();
-                    });
-                    return;
-                }
-                if (!gate.needsPackage()) {
+                if (!gate.allowed && !gate.needsPackage()) {
                     final String msg = gate.message.isEmpty() ? "Access denied." : gate.message;
                     runOnUiThread(() -> {
                         SessionManager.logout(this);
@@ -102,11 +93,19 @@ public class PackageActivity extends AppCompatActivity {
                     return;
                 }
                 final boolean pending = "PENDING".equals(gate.reason);
+                final boolean active = gate.allowed;
                 ApiClient.Resp p = ApiClient.get(this, "/api/packages", true);
                 ApiClient.Resp m = ApiClient.get(this, "/api/payment-methods", true);
                 ApiClient.Resp mine = ApiClient.get(this, "/api/payments/mine", true);
                 ApiClient.Resp subs = null;
                 try { subs = ApiClient.get(this, "/api/subscriptions/mine", true); } catch (Exception ignored) {}
+                // Server-side kill-switch: a 403 here means the account was
+                // disabled mid-session — bounce out, never show stale data.
+                if (p.code == 403 || p.code == 401) {
+                    final String msg = p.json.optString("error", "Access denied.");
+                    runOnUiThread(() -> bounceToActivation(msg));
+                    return;
+                }
                 if (!p.ok()) throw new Exception(p.json.optString("error", "Failed to load packages"));
                 packages = p.json.optJSONArray("packages");
                 if (packages == null) packages = new JSONArray();
@@ -125,6 +124,9 @@ public class PackageActivity extends AppCompatActivity {
                         statusView.setText(currentLine.isEmpty()
                                 ? "Account pending admin approval — choose a package below to activate."
                                 : (currentLine + "\nAccount pending admin approval — choose a package below to activate."));
+                    } else if (active) {
+                        String base = packages.length() == 0 ? "Package active — no other plans right now." : "Package active — choose a package below to extend/renew.";
+                        statusView.setText(currentLine.isEmpty() ? base : (currentLine + "\n" + base));
                     } else {
                         String base = packages.length() == 0 ? "No packages available right now." : "Choose a package:";
                         statusView.setText(currentLine.isEmpty() ? base : (currentLine + "\n" + base));
@@ -350,7 +352,9 @@ public class PackageActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         if (isFinishing()) return;
-        // Approval may have landed while away (or access revoked): re-verify.
+        // Access revoked while away: re-verify and bounce blocked accounts.
+        // Allowed / pending / no-package accounts simply stay on this screen
+        // (Refresh reloads); approval no longer force-leaves the screen.
         if (!SessionManager.isLoggedIn(this)) {
             bounceToActivation("Please activate this device.");
             return;
@@ -362,14 +366,7 @@ public class PackageActivity extends AppCompatActivity {
             } catch (Exception ignored) {
                 return; // stay; Refresh surfaces the offline block.
             }
-            if (gate.allowed) {
-                runOnUiThread(() -> {
-                    Intent i = new Intent(this, MainActivity.class);
-                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                    startActivity(i);
-                    finish();
-                });
-            } else if (!gate.needsPackage()) {
+            if (!gate.allowed && !gate.needsPackage()) {
                 final String msg = gate.message.isEmpty() ? "Access denied." : gate.message;
                 runOnUiThread(() -> bounceToActivation(msg));
             }

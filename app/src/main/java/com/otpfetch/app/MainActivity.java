@@ -111,6 +111,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView nameStatus;
     private int currentCountry = 0;
     private boolean mProgrammaticCountry = false;
+    // Guard against re-entrant bottom-navigation callbacks: syncing the
+    // BottomNavigationView selection from switchTab() re-fires the item
+    // listener, which must not recurse back into switchTab().
+    private boolean mNavGuard = false;
 
     // floating + exit
     private Button floatingBtn, exitBtn;
@@ -275,23 +279,33 @@ public class MainActivity extends AppCompatActivity {
             if (c == currentCountry) return;
             currentCountry = c;
             refreshDomainView();
-            if (countrySpinner != null) {
+            if (countrySpinner != null && countrySpinner.getAdapter() != null) {
+                if (c < 0 || c >= countrySpinner.getAdapter().getCount()) return;
                 mProgrammaticCountry = true;
-                countrySpinner.setSelection(c);
-                mProgrammaticCountry = false;
+                try {
+                    countrySpinner.setSelection(c);
+                } finally {
+                    mProgrammaticCountry = false;
+                }
             }
         } catch (Exception ignored) {}
     }
 
     private void restoreSharedGenderState() {
         try {
+            if (genderGroup == null) return;
             String g = OtpAutoActions.getGender(this);
             mProgrammaticGender = true;
-            if ("female".equalsIgnoreCase(g)) genderGroup.check(R.id.genderFemale);
-            else if ("both".equalsIgnoreCase(g)) genderGroup.check(R.id.genderBoth);
-            else genderGroup.check(R.id.genderMale);
-            mProgrammaticGender = false;
-        } catch (Exception ignored) {}
+            try {
+                if ("female".equalsIgnoreCase(g)) genderGroup.check(R.id.genderFemale);
+                else if ("both".equalsIgnoreCase(g)) genderGroup.check(R.id.genderBoth);
+                else genderGroup.check(R.id.genderMale);
+            } finally {
+                mProgrammaticGender = false;
+            }
+        } catch (Exception ignored) {
+            try { mProgrammaticGender = false; } catch (Exception ignored2) {}
+        }
     }
 
     @Override
@@ -444,13 +458,15 @@ public class MainActivity extends AppCompatActivity {
     // ---------------- tabs ----------------
 
     private void bindTabs() {
-        tabOtpBtn.setOnClickListener(v -> switchTab(true));
-        tabNameBtn.setOnClickListener(v -> switchTab(false));
+        if (tabOtpBtn != null) tabOtpBtn.setOnClickListener(v -> switchTab(true));
+        if (tabNameBtn != null) tabNameBtn.setOnClickListener(v -> switchTab(false));
     }
 
     private void switchTab(boolean otp) {
+        if (mNavGuard) return;
         try {
             if (tabOtp == null || tabName == null || tabOtpBtn == null || tabNameBtn == null) return;
+            if (isFinishing() || isDestroyed()) return;
             tabOtp.setVisibility(otp ? View.VISIBLE : View.GONE);
             tabName.setVisibility(otp ? View.GONE : View.VISIBLE);
             tabOtpBtn.setEnabled(!otp);
@@ -459,10 +475,36 @@ public class MainActivity extends AppCompatActivity {
             tabNameBtn.setAlpha(otp ? 0.5f : 1f);
             if (bottomNav != null) {
                 int want = otp ? NAV_OTP : NAV_NAMES;
-                if (bottomNav.getSelectedItemId() != want) bottomNav.setSelectedItemId(want);
+                try {
+                    if (bottomNav.getSelectedItemId() != want) {
+                        mNavGuard = true;
+                        try {
+                            bottomNav.setSelectedItemId(want);
+                        } finally {
+                            mNavGuard = false;
+                        }
+                    }
+                } catch (Exception ignored) {
+                    mNavGuard = false;
+                }
             }
         } catch (Exception e) {
+            mNavGuard = false;
             try { Toast.makeText(this, "Tab error: " + e.getMessage(), Toast.LENGTH_SHORT).show(); } catch (Exception ignored) {}
+        }
+    }
+
+    /** Opens the Packages screen. Used by the access bar, bottom bar and drawer. */
+    private void openPackages() {
+        try {
+            if (isFinishing() || isDestroyed()) return;
+            if (!SessionManager.isLoggedIn(this)) {
+                startActivity(new Intent(this, ActivationActivity.class));
+                return;
+            }
+            startActivity(new Intent(this, PackageActivity.class));
+        } catch (Exception e) {
+            try { toast("Packages unavailable: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
 
@@ -470,32 +512,50 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Bottom bar (OTP / Names / Packages / Menu) + sidebar drawer (Account,
-     * Server, Floating widget, Updates, Packages, Exit). Drawer actions reuse
-     * the existing card buttons via performClick(), so no behavior changes.
+     * Server, Floating widget, Updates, Packages, Exit). Packages always goes
+     * through openPackages() so every entry point opens the same screen.
      */
     private void bindNavigation() {
         if (bottomNav != null) {
             Menu m = bottomNav.getMenu();
+            // Clear first: onCreate can run again (e.g. rotation) and must
+            // never stack duplicate OTP/Names/Packages/Menu items.
+            m.clear();
             m.add(Menu.NONE, NAV_OTP, 0, "OTP").setIcon(android.R.drawable.ic_menu_view);
             m.add(Menu.NONE, NAV_NAMES, 1, "Names").setIcon(android.R.drawable.ic_menu_edit);
             m.add(Menu.NONE, NAV_PACKAGES, 2, "Packages").setIcon(android.R.drawable.ic_menu_send);
             m.add(Menu.NONE, NAV_MENU, 3, "Menu").setIcon(android.R.drawable.ic_menu_more);
             bottomNav.setLabelVisibilityMode(BottomNavigationView.LABEL_VISIBILITY_LABELED);
-            bottomNav.setSelectedItemId(NAV_OTP);
+            try {
+                mNavGuard = true;
+                bottomNav.setSelectedItemId(NAV_OTP);
+            } catch (Exception ignored) {
+            } finally {
+                mNavGuard = false;
+            }
             bottomNav.setOnItemSelectedListener(item -> {
-                int id = item.getItemId();
-                if (id == NAV_OTP) switchTab(true);
-                else if (id == NAV_NAMES) switchTab(false);
-                else if (id == NAV_PACKAGES && packagesBtn != null) packagesBtn.performClick();
-                else if (id == NAV_MENU && drawerLayout != null) {
-                    refreshDrawerTitles();
-                    drawerLayout.openDrawer(GravityCompat.START);
+                if (mNavGuard) return true;
+                try {
+                    int id = item.getItemId();
+                    if (id == NAV_OTP) switchTab(true);
+                    else if (id == NAV_NAMES) switchTab(false);
+                    else if (id == NAV_PACKAGES) openPackages();
+                    else if (id == NAV_MENU && drawerLayout != null) {
+                        refreshDrawerTitles();
+                        drawerLayout.openDrawer(GravityCompat.START);
+                    }
+                } catch (Exception e) {
+                    try { toast("Navigation error: " + e.getMessage()); } catch (Exception ignored) {}
                 }
                 return true;
+            });
+            bottomNav.setOnItemReselectedListener(item -> {
+                // Re-tapping the active tab is a no-op (never re-launch screens).
             });
         }
         if (navDrawer != null) {
             Menu dm = navDrawer.getMenu();
+            dm.clear();
             dm.add(Menu.NONE, DRAWER_TITLE, 0,
                     "Rantu_OTP v" + ApiClient.appVersion(this)).setEnabled(false);
             dm.add(Menu.NONE, DRAWER_ACCOUNT, 1, "Account")
@@ -513,14 +573,20 @@ public class MainActivity extends AppCompatActivity {
             drawerServerItem = dm.findItem(DRAWER_SERVER);
             drawerFloatingItem = dm.findItem(DRAWER_FLOATING);
             navDrawer.setNavigationItemSelectedListener(item -> {
-                int id = item.getItemId();
-                if (id == DRAWER_ACCOUNT && accountBtn != null) accountBtn.performClick();
-                else if (id == DRAWER_SERVER && serverToggleBtn != null) serverToggleBtn.performClick();
-                else if (id == DRAWER_FLOATING && floatingBtn != null) floatingBtn.performClick();
-                else if (id == DRAWER_UPDATES) checkForUpdatesManual();
-                else if (id == DRAWER_PACKAGES && packagesBtn != null) packagesBtn.performClick();
-                else if (id == DRAWER_EXIT) exitApp();
-                if (drawerLayout != null) drawerLayout.closeDrawer(GravityCompat.START);
+                try {
+                    int id = item.getItemId();
+                    if (id == DRAWER_ACCOUNT && accountBtn != null) accountBtn.performClick();
+                    else if (id == DRAWER_SERVER && serverToggleBtn != null) serverToggleBtn.performClick();
+                    else if (id == DRAWER_FLOATING && floatingBtn != null) floatingBtn.performClick();
+                    else if (id == DRAWER_UPDATES) checkForUpdatesManual();
+                    else if (id == DRAWER_PACKAGES) openPackages();
+                    else if (id == DRAWER_EXIT) exitApp();
+                } catch (Exception e) {
+                    try { toast("Menu error: " + e.getMessage()); } catch (Exception ignored) {}
+                }
+                try {
+                    if (drawerLayout != null) drawerLayout.closeDrawer(GravityCompat.START);
+                } catch (Exception ignored) {}
                 return true;
             });
         }
@@ -648,6 +714,41 @@ public class MainActivity extends AppCompatActivity {
         // for any local client, not just this Activity.
         net.execute(() -> {
             try {
+                // Server-side kill-switch: re-verify access on the backend right
+                // before issuing an OTP. A disabled account (admin revoked access
+                // while the modal was open) is bounced out immediately, even with
+                // a still-valid JWT — the local OTP bridge alone never grants use.
+                final AccessGate.Result fresh;
+                try {
+                    fresh = AccessGate.check(MainActivity.this);
+                } catch (Exception e) {
+                    accessAllowed = false;
+                    accessReason = "OFFLINE";
+                    main.post(() -> {
+                        getCodeBtn.setEnabled(true);
+                        showOfflineBlock();
+                    });
+                    return;
+                }
+                accessAllowed = fresh.allowed;
+                accessReason = fresh.reason;
+                if (!fresh.allowed) {
+                    if (fresh.needsPackage()) {
+                        main.post(() -> {
+                            getCodeBtn.setEnabled(true);
+                            showStatus("No active package — opening Packages", true);
+                            openPackages();
+                        });
+                    } else {
+                        final String msg = fresh.message.isEmpty() ? "Access denied." : fresh.message;
+                        main.post(() -> {
+                            getCodeBtn.setEnabled(true);
+                            toast(msg);
+                            bounceTo(ActivationActivity.class, true);
+                        });
+                    }
+                    return;
+                }
                 URL url = new URL("http://127.0.0.1:3000/get-otp");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
@@ -698,40 +799,69 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showStatus(String msg, boolean isError) {
-        statusDiv.setText(msg);
-        statusDiv.setTextColor(ContextCompat.getColor(this, isError ? R.color.error : R.color.success));
+        try {
+            if (statusDiv == null) return;
+            statusDiv.setText(msg == null ? "" : msg);
+            statusDiv.setTextColor(ContextCompat.getColor(this, isError ? R.color.error : R.color.success));
+        } catch (Exception ignored) {}
     }
 
     // ---------------- Name tab (port of popup.js) ----------------
 
     private void bindNameTab() {
         try {
+            if (CountryData.COUNTRIES == null || CountryData.COUNTRIES.length == 0) {
+                try { toast("Names unavailable: no country data"); } catch (Exception ignored) {}
+                return;
+            }
             currentCountry = OtpAutoActions.getCountry(this);
             if (currentCountry < 0 || currentCountry >= CountryData.COUNTRIES.length) currentCountry = 0;
+            String[] names;
+            try {
+                names = CountryData.displayNames();
+            } catch (Exception e) {
+                names = new String[0];
+            }
+            if (names == null || names.length == 0) {
+                try { toast("Names unavailable: no country data"); } catch (Exception ignored) {}
+                return;
+            }
             ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                    android.R.layout.simple_spinner_item, CountryData.displayNames());
+                    android.R.layout.simple_spinner_item, names);
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
             if (countrySpinner != null) {
-                countrySpinner.setAdapter(adapter);
-                if (currentCountry >= 0 && currentCountry < CountryData.COUNTRIES.length) {
-                    countrySpinner.setSelection(currentCountry);
+                try {
+                    // Listener first (with programmatic guard), then selection,
+                    // so init never fires a user-selection callback.
+                    countrySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                        @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                            try {
+                                if (mProgrammaticCountry) return;
+                                if (p == null) return;
+                                int count = p.getCount();
+                                if (pos < 0 || pos >= count) return;
+                                if (pos < 0 || pos >= CountryData.COUNTRIES.length) return;
+                                currentCountry = pos;
+                                OtpAutoActions.setCountry(MainActivity.this, pos);
+                                refreshDomainView();
+                            } catch (Exception ignored) {}
+                        }
+                        @Override public void onNothingSelected(AdapterView<?> p) {}
+                    });
+                    countrySpinner.setAdapter(adapter);
+                    if (currentCountry >= 0 && currentCountry < adapter.getCount()) {
+                        mProgrammaticCountry = true;
+                        try {
+                            countrySpinner.setSelection(currentCountry);
+                        } finally {
+                            mProgrammaticCountry = false;
+                        }
+                    }
+                } catch (Exception e) {
+                    try { toast("Names unavailable: " + e.getMessage()); } catch (Exception ignored) {}
                 }
             }
             refreshDomainView();
-            if (countrySpinner != null) {
-        countrySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                try {
-                    if (mProgrammaticCountry) return;
-                    if (pos < 0 || pos >= CountryData.COUNTRIES.length) return;
-                    currentCountry = pos;
-                    OtpAutoActions.setCountry(MainActivity.this, pos);
-                    refreshDomainView();
-                } catch (Exception ignored) {}
-            }
-            @Override public void onNothingSelected(AdapterView<?> p) {}
-        });
-            }
             if (genderGroup != null) {
         genderGroup.setOnCheckedChangeListener((group, checkedId) -> {
             try {
@@ -751,23 +881,49 @@ public class MainActivity extends AppCompatActivity {
                     enforceAccessGate();
                     return;
                 }
-                int checked = genderGroup != null ? genderGroup.getCheckedRadioButtonId() : R.id.genderMale;
-                String gender = "male";
-                if (checked == R.id.genderFemale) gender = "female";
-                else if (checked == R.id.genderBoth) gender = "both";
-                String name = OtpHelper.generateName(currentCountry, gender);
-                if (name == null || name.trim().isEmpty()) {
-                    if (nameStatus != null) nameStatus.setText("Try again");
-                    return;
-                }
-                OtpAutoActions.setGenName(this, name);
-                showGeneratedName(name);
-                if (nameStatus != null) {
-                    nameStatus.setText("✓");
-                    nameStatus.setTextColor(ContextCompat.getColor(this, R.color.success));
-                }
+                genNameBtn.setEnabled(false);
+                // Server-side kill-switch: re-verify on the backend before
+                // generating, so a revoked account is bounced immediately.
+                net.execute(() -> {
+                    final AccessGate.Result fresh;
+                    try {
+                        fresh = AccessGate.check(MainActivity.this);
+                    } catch (Exception e) {
+                        accessAllowed = false;
+                        accessReason = "OFFLINE";
+                        main.post(() -> {
+                            genNameBtn.setEnabled(true);
+                            showOfflineBlock();
+                        });
+                        return;
+                    }
+                    accessAllowed = fresh.allowed;
+                    accessReason = fresh.reason;
+                    main.post(() -> {
+                        try {
+                            genNameBtn.setEnabled(true);
+                            if (!fresh.allowed) {
+                                if (fresh.needsPackage()) {
+                                    toast("No active package — opening Packages");
+                                    openPackages();
+                                } else {
+                                    String msg = fresh.message.isEmpty() ? "Access denied." : fresh.message;
+                                    toast(msg);
+                                    bounceTo(ActivationActivity.class, true);
+                                }
+                                return;
+                            }
+                            generateAndShowName();
+                        } catch (Exception e) {
+                            try { toast("Name error: " + e.getMessage()); } catch (Exception ignored) {}
+                        }
+                    });
+                });
             } catch (Exception e) {
-                try { toast("Name error: " + e.getMessage()); } catch (Exception ignored) {}
+                try {
+                    genNameBtn.setEnabled(true);
+                    toast("Name error: " + e.getMessage());
+                } catch (Exception ignored) {}
             }
         });
             }
@@ -801,6 +957,31 @@ public class MainActivity extends AppCompatActivity {
         }
         } catch (Exception e) {
             try { toast("Names unavailable: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    /** Local name generation + display. Call only after fresh access is confirmed. */
+    private void generateAndShowName() {
+        try {
+            if (isFinishing() || isDestroyed()) return;
+            int checked = genderGroup != null ? genderGroup.getCheckedRadioButtonId() : R.id.genderMale;
+            String gender = "male";
+            if (checked == R.id.genderFemale) gender = "female";
+            else if (checked == R.id.genderBoth) gender = "both";
+            if (currentCountry < 0 || currentCountry >= CountryData.COUNTRIES.length) currentCountry = 0;
+            String name = OtpHelper.generateName(currentCountry, gender);
+            if (name == null || name.trim().isEmpty()) {
+                if (nameStatus != null) nameStatus.setText("Try again");
+                return;
+            }
+            OtpAutoActions.setGenName(this, name);
+            showGeneratedName(name);
+            if (nameStatus != null) {
+                nameStatus.setText("✓");
+                nameStatus.setTextColor(ContextCompat.getColor(this, R.color.success));
+            }
+        } catch (Exception e) {
+            try { toast("Name error: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
 
@@ -991,13 +1172,7 @@ public class MainActivity extends AppCompatActivity {
             });
         }
         if (packagesBtn != null) {
-            packagesBtn.setOnClickListener(v -> {
-                if (!SessionManager.isLoggedIn(this)) {
-                    startActivity(new Intent(this, ActivationActivity.class));
-                    return;
-                }
-                startActivity(new Intent(this, PackageActivity.class));
-            });
+            packagesBtn.setOnClickListener(v -> openPackages());
         }
     }
 
