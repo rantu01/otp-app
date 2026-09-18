@@ -12,36 +12,35 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17 (required by Android Gradle Plugin 8.x)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: "temurin"
           java-version: "17"
           cache: "gradle"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # NOTE: ubuntu-latest runners already ship the Android SDK + cmdline-tools.
+      # android-actions/setup-android@v3 is broken (it runs `sdkmanager tools`,
+      # and the obsolete "tools" package no longer exists -> exit code 1),
+      # so install only the packages this project needs (compileSdk 34).
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          yes | sdkmanager --licenses > /dev/null || true
 
       - name: Set up Gradle 8.7
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
 
-      - name: Build user + admin debug APKs
-        run: gradle :app:assembleDebug :admin-app:assembleDebug --no-daemon --stacktrace
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload user APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: rantuOTP-apk
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      - name: Upload admin APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: rantuOTP-admin-apk
-          path: admin-app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

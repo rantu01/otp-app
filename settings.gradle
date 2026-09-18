@@ -14,4 +14,3 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Rantu_OTP"
 include(":app")
-include(":admin-app")
