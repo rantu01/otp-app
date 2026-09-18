@@ -106,10 +106,11 @@ public class MainActivity extends AppCompatActivity {
     // floating + exit
     private Button floatingBtn, exitBtn;
 
-    // access / subscription gate (shared backend; OTP UI below is unchanged)
+    // access / subscription gate: FAIL-CLOSED — nothing on this screen is usable
+    // until the backend explicitly confirms access (see enforceAccessGate).
     private TextView accessStatus;
-    private volatile boolean accessAllowed = true;
-    private volatile String accessReason = "UNKNOWN";
+    private volatile boolean accessAllowed = false;
+    private volatile String accessReason = "VERIFYING";
     private volatile boolean gateDialogShowing = false;
 
     // auto OTP actions
@@ -137,6 +138,17 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Hard entry gate: no session -> Auth immediately, before anything else.
+        // (AuthActivity routes here only after server approval, but the back
+        // stack, recents, notifications and explicit intents must never be able
+        // to land on Home ungated.)
+        if (!SessionManager.isLoggedIn(this)) {
+            Intent noSession = new Intent(this, AuthActivity.class);
+            noSession.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(noSession);
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_main);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         OtpServer.getInstance().init(getApplicationContext());
@@ -341,6 +353,10 @@ public class MainActivity extends AppCompatActivity {
                 main.post(this::refreshServerUi));
         serverToggleBtn.setOnClickListener(v -> {
             if (OtpServer.getInstance().isRunning()) stopServer();
+            else if (!accessAllowed) {
+                toast("Locked — access not approved");
+                enforceAccessGate();
+            }
             else startServer();
         });
     }
@@ -409,6 +425,8 @@ public class MainActivity extends AppCompatActivity {
                 extractAndShowEmail(val);
                 if (mProgrammaticAccount) return; // synced echo from popup — don't re-save/re-fetch
                 prefs.edit().putString(KEY_SAVED, val).apply();
+                // Locked users must not trigger background OTP fetches either.
+                if (!accessAllowed) return;
                 // Auto-fetch: valid account lines start fetching immediately, no Get OTP tap.
                 AutoFetchManager.onAccountDataChanged(MainActivity.this, val);
             }
@@ -446,10 +464,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void onGetCode() {
-        // Backend-validated gate: blocked/expired users cannot use protected features.
-        if (SessionManager.isLoggedIn(this) && !accessAllowed) {
-            showStatus("Access blocked (" + accessReason + "). Open Packages.", true);
-            toast("Access blocked — check Packages");
+        // Backend-validated gate: NOTHING works until the server confirms access.
+        if (!accessAllowed) {
+            showStatus("Locked (" + accessReason + ") — verifying access.", true);
+            toast("Locked — verifying access");
+            enforceAccessGate();
             return;
         }
         String data = accountDataInput.getText().toString().trim();
@@ -567,6 +586,11 @@ public class MainActivity extends AppCompatActivity {
             OtpAutoActions.setGender(this, gender);
         });
         genNameBtn.setOnClickListener(v -> {
+            if (!accessAllowed) {
+                toast("Locked — access not approved");
+                enforceAccessGate();
+                return;
+            }
             int checked = genderGroup.getCheckedRadioButtonId();
             String gender = "male";
             if (checked == R.id.genderFemale) gender = "female";
@@ -702,6 +726,9 @@ public class MainActivity extends AppCompatActivity {
             if (FloatingService.isRunning()) {
                 stopService(new Intent(this, FloatingService.class));
                 refreshServerUi();
+            } else if (!accessAllowed) {
+                toast("Locked — access not approved");
+                enforceAccessGate();
             } else {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                         && !Settings.canDrawOverlays(this)) {
@@ -765,11 +792,7 @@ public class MainActivity extends AppCompatActivity {
                                     + "\nAccess: " + accessReason)
                             .setPositiveButton("Refresh", (d, w) -> enforceAccessGate())
                             .setNegativeButton("Logout", (d, w) -> {
-                                SessionManager.logout(this);
-                                accessAllowed = true;
-                                accessReason = "LOGGED_OUT";
-                                setAccessText("Not logged in");
-                                startActivity(new Intent(this, AuthActivity.class));
+                                bounceTo(AuthActivity.class, true);
                             })
                             .show();
                 } else {
@@ -795,9 +818,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Startup flow: version check -> auth -> account/access/package check.
-     * Fail-open when the backend is unreachable (offline): OTP keeps working
-     * and the bar shows "Offline". Fail-closed when backend explicitly denies.
+     * Startup + resume flow: version check -> login check -> live access check.
+     * FAIL-CLOSED: any denial, dead session or unreachable backend bounces out
+     * of Home. There is intentionally no "Later" path — unverified users cannot
+     * use this screen, and CLEAR_TASK prevents navigating back into it.
      */
     private void enforceAccessGate() {
         net.execute(() -> {
@@ -815,61 +839,90 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
             } catch (Exception e) {
-                setAccessText("Offline — access not verified");
-                return; // no internet / backend down: don't brick the app
-            }
-            if (!SessionManager.isLoggedIn(this)) {
-                accessAllowed = true; // allow local OTP until login; gate re-checks after login
-                accessReason = "NOT_LOGGED_IN";
-                setAccessText("Not logged in — tap Account");
-                main.post(() -> {
-                    if (!gateDialogShowing) {
-                        gateDialogShowing = true;
-                        new AlertDialog.Builder(MainActivity.this)
-                                .setTitle("Login required")
-                                .setMessage("Please login to verify your package access.")
-                                .setPositiveButton("Login", (d, w) -> {
-                                    gateDialogShowing = false;
-                                    startActivity(new Intent(MainActivity.this, AuthActivity.class));
-                                })
-                                .setNegativeButton("Later", (d, w) -> gateDialogShowing = false)
-                                .show();
-                    }
-                });
+                accessAllowed = false;
+                accessReason = "OFFLINE";
+                showOfflineBlock();
                 return;
             }
-            try {
-                ApiClient.Resp r = ApiClient.get(this, "/api/access/status", true);
-                if (r.code == 401) {
-                    SessionManager.logout(this);
-                    accessAllowed = true;
-                    accessReason = "SESSION_EXPIRED";
-                    setAccessText("Session expired — tap Account");
-                    return;
-                }
-                if (!r.ok()) {
-                    setAccessText("Offline — access not verified");
-                    return;
-                }
-                org.json.JSONObject access = r.json.optJSONObject("access");
-                String reason = access == null ? "UNKNOWN" : access.optString("reason", "UNKNOWN");
-                boolean allowed = access != null && access.optBoolean("allowed", false);
-                accessAllowed = allowed;
-                accessReason = reason;
-                if (allowed) {
-                    String exp = access.optString("packageExpireDate", "");
-                    setAccessText("✓ Active: " + access.optString("packageName", "package") + (exp.isEmpty() ? "" : " till " + exp.substring(0, 10)));
-                } else if ("NO_PACKAGE".equals(reason)) {
-                    setAccessText("No active package — tap Packages");
-                    main.post(this::showNoPackage);
-                } else {
-                    setAccessText("Access denied (" + reason + ")");
-                    main.post(() -> showAccessDenied(access == null ? "Access denied." : access.optString("message", "Access denied.")));
-                }
-            } catch (Exception e) {
-                setAccessText("Offline — access not verified");
+            if (!SessionManager.isLoggedIn(this)) {
+                accessAllowed = false;
+                accessReason = "NOT_LOGGED_IN";
+                main.post(() -> bounceTo(AuthActivity.class, false));
+                return;
             }
+            final AccessGate.Result gate;
+            try {
+                gate = AccessGate.check(this);
+            } catch (Exception e) {
+                accessAllowed = false;
+                accessReason = "OFFLINE";
+                showOfflineBlock();
+                return;
+            }
+            accessAllowed = gate.allowed;
+            accessReason = gate.reason;
+            if (gate.allowed) {
+                String pkg = gate.packageName.isEmpty() ? "package" : gate.packageName;
+                String till = gate.expireDate.length() >= 10
+                        ? " till " + gate.expireDate.substring(0, 10) : "";
+                setAccessText("✓ Active: " + pkg + till);
+                return;
+            }
+            if (gate.needsPackage()) {
+                setAccessText("NO_PACKAGE".equals(gate.reason)
+                        ? "No active package — opening Packages"
+                        : "Pending admin approval — opening Packages");
+                main.post(() -> bounceTo(PackageActivity.class, false));
+                return;
+            }
+            // DISABLED / ACCESS_DENIED / SESSION_EXPIRED / NO_ACCOUNT / other:
+            // full lockout, session cleared.
+            final String msg = gate.message.isEmpty() ? "Access denied." : gate.message;
+            setAccessText("Access denied (" + gate.reason + ")");
+            main.post(() -> {
+                toast(msg);
+                bounceTo(AuthActivity.class, true);
+            });
         });
+    }
+
+    /** Fail-closed offline state: Retry re-verifies, Logout exits. No "Later". */
+    private void showOfflineBlock() {
+        setAccessText("Offline — access not verified");
+        main.post(() -> {
+            if (gateDialogShowing || isFinishing()) return;
+            gateDialogShowing = true;
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("Cannot verify access")
+                    .setMessage("The server could not be reached. The app stays locked until access is verified.")
+                    .setCancelable(false)
+                    .setPositiveButton("Retry", (d, w) -> {
+                        gateDialogShowing = false;
+                        enforceAccessGate();
+                    })
+                    .setNegativeButton("Logout", (d, w) -> {
+                        gateDialogShowing = false;
+                        bounceTo(AuthActivity.class, true);
+                    })
+                    .show();
+        });
+    }
+
+    /**
+     * Hard bounce: stop every background surface (server + floating widget),
+     * optionally clear the session, and clear the back stack so Back can never
+     * return into Home.
+     */
+    private void bounceTo(Class<?> target, boolean clearSession) {
+        if (isFinishing()) return;
+        accessAllowed = false;
+        try { OtpServer.getInstance().stop(); } catch (Exception ignored) {}
+        try { stopService(new Intent(this, FloatingService.class)); } catch (Exception ignored) {}
+        if (clearSession) SessionManager.logout(this);
+        Intent i = new Intent(this, target);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(i);
+        finish();
     }
 
     private void showForceUpdate(String url, String message) {
@@ -891,39 +944,6 @@ public class MainActivity extends AppCompatActivity {
                     gateDialogShowing = false;
                     enforceAccessGate();
                 })
-                .show();
-    }
-
-    private void showAccessDenied(String message) {
-        if (gateDialogShowing) return;
-        gateDialogShowing = true;
-        new AlertDialog.Builder(this)
-                .setTitle("Access Denied")
-                .setMessage(message)
-                .setCancelable(false)
-                .setPositiveButton("Recheck", (d, w) -> {
-                    gateDialogShowing = false;
-                    enforceAccessGate();
-                })
-                .setNegativeButton("Logout", (d, w) -> {
-                    gateDialogShowing = false;
-                    SessionManager.logout(this);
-                    startActivity(new Intent(this, AuthActivity.class));
-                })
-                .show();
-    }
-
-    private void showNoPackage() {
-        if (gateDialogShowing) return;
-        gateDialogShowing = true;
-        new AlertDialog.Builder(this)
-                .setTitle("No Active Package")
-                .setMessage("Choose a package and complete payment to use the app.")
-                .setPositiveButton("View Packages", (d, w) -> {
-                    gateDialogShowing = false;
-                    startActivity(new Intent(this, PackageActivity.class));
-                })
-                .setNegativeButton("Later", (d, w) -> gateDialogShowing = false)
                 .show();
     }
 

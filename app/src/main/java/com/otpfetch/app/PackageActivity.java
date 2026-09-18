@@ -3,6 +3,7 @@ package com.otpfetch.app;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
@@ -41,6 +42,15 @@ public class PackageActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Hard entry gate: no session -> Auth. Logged-in sessions are verified
+        // server-side in loadAll()/onResume (approved -> Main, blocked -> Auth).
+        if (!SessionManager.isLoggedIn(this)) {
+            Intent i = new Intent(this, AuthActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(i);
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_package);
         packageList = findViewById(R.id.packageList);
         methodList = findViewById(R.id.methodList);
@@ -59,6 +69,39 @@ public class PackageActivity extends AppCompatActivity {
         statusView.setText("Loading packages...");
         net.execute(() -> {
             try {
+                // Live server gate first: approved -> Home, blocked -> Auth.
+                // Only PENDING / NO_PACKAGE accounts may stay on this screen.
+                final AccessGate.Result gate;
+                try {
+                    gate = AccessGate.check(this);
+                } catch (Exception e) {
+                    runOnUiThread(this::showOfflineBlock);
+                    return;
+                }
+                if (gate.allowed) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "Package active — opening app", Toast.LENGTH_SHORT).show();
+                        Intent i = new Intent(this, MainActivity.class);
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        startActivity(i);
+                        finish();
+                    });
+                    return;
+                }
+                if (!gate.needsPackage()) {
+                    final String msg = gate.message.isEmpty() ? "Access denied." : gate.message;
+                    runOnUiThread(() -> {
+                        SessionManager.logout(this);
+                        try { stopService(new Intent(this, FloatingService.class)); } catch (Exception ignored) {}
+                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+                        Intent i = new Intent(this, AuthActivity.class);
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        startActivity(i);
+                        finish();
+                    });
+                    return;
+                }
+                final boolean pending = "PENDING".equals(gate.reason);
                 ApiClient.Resp p = ApiClient.get(this, "/api/packages", true);
                 ApiClient.Resp m = ApiClient.get(this, "/api/payment-methods", true);
                 ApiClient.Resp mine = ApiClient.get(this, "/api/payments/mine", true);
@@ -72,7 +115,11 @@ public class PackageActivity extends AppCompatActivity {
                     renderPackages();
                     renderMethods();
                     renderMine(my == null ? new JSONArray() : my);
-                    statusView.setText(packages.length() == 0 ? "No packages available right now." : "Choose a package:");
+                    if (pending) {
+                        statusView.setText("Account pending admin approval — choose a package below to activate.");
+                    } else {
+                        statusView.setText(packages.length() == 0 ? "No packages available right now." : "Choose a package:");
+                    }
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> statusView.setText("Offline: " + e.getMessage() + " — tap Refresh to retry."));
@@ -206,6 +253,14 @@ public class PackageActivity extends AppCompatActivity {
                 ApiClient.Resp r = ApiClient.postIdempotent(this, "/api/payments", body, true);
                 runOnUiThread(() -> {
                     submitBtn.setEnabled(true);
+                    if (r.code == 401) {
+                        bounceToAuth("Session expired. Please login again.");
+                        return;
+                    }
+                    if (r.code == 403) {
+                        bounceToAuth(r.json.optString("error", "Access denied."));
+                        return;
+                    }
                     if (r.ok()) {
                         statusView.setText("Payment Status: Pending — admin will verify shortly.");
                         txidInput.setText("");
@@ -231,6 +286,60 @@ public class PackageActivity extends AppCompatActivity {
         b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(selected ? 0xFF00A152 : 0xFF6C3CE0));
         b.setTextColor(0xFFFFFFFF);
         return b;
+    }
+
+    private void bounceToAuth(String msg) {
+        if (isFinishing()) return;
+        SessionManager.logout(this);
+        try { stopService(new Intent(this, FloatingService.class)); } catch (Exception ignored) {}
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+        Intent i = new Intent(this, AuthActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(i);
+        finish();
+    }
+
+    /** Fail-closed offline state: without a live access check this screen stays unusable. */
+    private void showOfflineBlock() {
+        if (isFinishing()) return;
+        statusView.setText("Offline — access not verified.");
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Cannot verify access")
+                .setMessage("The server could not be reached. This screen stays locked until access is verified.")
+                .setCancelable(false)
+                .setPositiveButton("Retry", (d, w) -> loadAll())
+                .setNegativeButton("Logout", (d, w) -> bounceToAuth("Logged out."))
+                .show();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (isFinishing()) return;
+        // Approval may have landed while away (or access revoked): re-verify.
+        if (!SessionManager.isLoggedIn(this)) {
+            bounceToAuth("Please login.");
+            return;
+        }
+        net.execute(() -> {
+            final AccessGate.Result gate;
+            try {
+                gate = AccessGate.check(this);
+            } catch (Exception ignored) {
+                return; // stay; Refresh surfaces the offline block.
+            }
+            if (gate.allowed) {
+                runOnUiThread(() -> {
+                    Intent i = new Intent(this, MainActivity.class);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    startActivity(i);
+                    finish();
+                });
+            } else if (!gate.needsPackage()) {
+                final String msg = gate.message.isEmpty() ? "Access denied." : gate.message;
+                runOnUiThread(() -> bounceToAuth(msg));
+            }
+        });
     }
 
     @Override

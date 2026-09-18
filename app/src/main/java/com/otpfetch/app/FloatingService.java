@@ -91,6 +91,12 @@ public class FloatingService extends Service {
     private final ExecutorService net = Executors.newCachedThreadPool();
     private final Handler main = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
+    /**
+     * FAIL-CLOSED widget gate: popup OTP/server/name actions stay disabled
+     * until the backend explicitly confirms access (verified on service start).
+     * MainActivity stops this service outright whenever access is revoked.
+     */
+    private volatile boolean serviceAccessAllowed = false;
     private final OtpServer.OtpListener autoOtpListener = (email, code) ->
             main.post(() -> onAutoOtp(email, code));
 
@@ -139,6 +145,41 @@ public class FloatingService extends Service {
         createChannel();
         startForeground(NOTIF_ID, buildNotification());
         showBubble();
+        verifyServiceAccess();
+    }
+
+    /** Widget entry gate: no session or no backend approval -> kill the widget. */
+    private void verifyServiceAccess() {
+        if (!SessionManager.isLoggedIn(this)) {
+            stopSelf();
+            return;
+        }
+        net.execute(() -> {
+            try {
+                AccessGate.Result r = AccessGate.check(this);
+                if (r.allowed) {
+                    serviceAccessAllowed = true;
+                } else {
+                    // Revoked/expired/pending mid-session: no widget.
+                    serviceAccessAllowed = false;
+                    main.post(() -> {
+                        toast(r.message.isEmpty() ? "Access revoked" : r.message);
+                        stopSelf();
+                    });
+                }
+            } catch (Exception e) {
+                // Offline: stay fail-closed (actions blocked) until verified.
+                serviceAccessAllowed = false;
+            }
+        });
+    }
+
+    /** Popup action guard: blocks + re-verifies when access is unconfirmed. */
+    private boolean requireServiceAccess() {
+        if (serviceAccessAllowed) return true;
+        toast("Locked — verifying access");
+        verifyServiceAccess();
+        return false;
     }
 
     /** Single-app sync: reflect state written by the main app. */
@@ -500,6 +541,7 @@ public class FloatingService extends Service {
         Button pCopyName = actionButton("Copy");
         tint(pCopyName, R.color.accent_orange);
         pGenName.setOnClickListener(v -> {
+            if (!requireServiceAccess()) return;
             String name = OtpHelper.generateName(pCountry, pGender);
             OtpAutoActions.setGenName(this, name);
             showPopupName(name);
@@ -527,13 +569,15 @@ public class FloatingService extends Service {
                 refreshPopupEmail(val);
                 if (pProgrammaticAccount) return; // synced echo from main app
                 prefs.edit().putString(KEY_SAVED, val).apply();
+                // Locked widget must not trigger background OTP fetches either.
+                if (!serviceAccessAllowed) return;
                 // Auto-fetch: valid account lines start fetching immediately, no Get OTP tap.
                 AutoFetchManager.onAccountDataChanged(FloatingService.this, val);
             }
         });
         refreshPopupEmail(pAccount.getText().toString());
         // Popup opened with existing data behaves like the main app: fetch right away.
-        if (!pAccount.getText().toString().trim().isEmpty()) {
+        if (!pAccount.getText().toString().trim().isEmpty() && serviceAccessAllowed) {
             AutoFetchManager.onAccountDataChanged(this, pAccount.getText().toString());
         }
         refreshPopupServerUi();
@@ -627,7 +671,13 @@ public class FloatingService extends Service {
         net.execute(() -> {
             try {
                 if (OtpServer.getInstance().isRunning()) OtpServer.getInstance().stop();
-                else OtpServer.getInstance().start();
+                else {
+                    if (!serviceAccessAllowed) {
+                        main.post(() -> toast("Locked — access not approved"));
+                        return;
+                    }
+                    OtpServer.getInstance().start();
+                }
             } catch (Exception e) {
                 toast("Failed: " + e.getMessage());
             }
@@ -658,6 +708,10 @@ public class FloatingService extends Service {
 
     private void popupGetCode() {
         if (pAccount == null) return;
+        if (!requireServiceAccess()) {
+            popupStatus("Locked — access not approved", true);
+            return;
+        }
         String data = pAccount.getText().toString().trim();
         if (data.isEmpty()) {
             popupStatus("Paste account data first", true);
