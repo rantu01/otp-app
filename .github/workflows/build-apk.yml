@@ -1,4 +1,4 @@
-name: Build rantuOTP APK
+name: Build Rantu_OTP APK
 
 on:
   push:
@@ -46,6 +46,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: rantuOTP-apk
+          name: Rantu_OTP-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

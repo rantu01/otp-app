@@ -246,7 +246,7 @@ public class FloatingService extends Service {
         PendingIntent pi = PendingIntent.getActivity(this, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("rantuOTP")
+                .setContentTitle("Rantu_OTP")
                 .setContentText("Tap bubble for OTP. Exit App closes fully.")
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .setContentIntent(pi)
@@ -361,7 +361,7 @@ public class FloatingService extends Service {
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = new TextView(this);
-        title.setText("rantuOTP");
+        title.setText("Rantu_OTP");
         title.setTextSize(15);
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         title.setTextColor(getColor(R.color.accent_blue));
@@ -830,7 +830,7 @@ public class FloatingService extends Service {
 
     private void copy(String text) {
         ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("rantuOTP", text));
+        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Rantu_OTP", text));
         toast("Copied");
     }
 

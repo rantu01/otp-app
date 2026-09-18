@@ -1,4 +1,4 @@
-# rantuOTP — Android App
+# Rantu_OTP — Android App
 
 Native Android port of the two existing folders:
 
@@ -51,8 +51,8 @@ OTP-Android-App/
 1. Create a new GitHub repository.
 2. Upload the **contents** of the `OTP-Android-App` folder as the repo root
    (so `settings.gradle`, `app/`, `.github/` are at the top level).
-3. Push — the `Build rantuOTP APK` workflow (`.github/workflows/build-apk.yml`)
-   starts automatically. After ~3–6 minutes, download `rantuOTP-apk`
+3. Push — the `Build Rantu_OTP APK` workflow (`.github/workflows/build-apk.yml`)
+   starts automatically. After ~3–6 minutes, download `Rantu_OTP-apk`
    from the run's **Artifacts** section and install it on your phone.
 
 ## Build (option B: Android Studio)

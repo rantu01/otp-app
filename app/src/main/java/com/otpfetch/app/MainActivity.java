@@ -30,6 +30,14 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.GravityCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
+
+import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.navigation.NavigationView;
+
+import android.view.Menu;
+import android.view.MenuItem;
 
 import org.json.JSONObject;
 
@@ -82,6 +90,7 @@ public class MainActivity extends AppCompatActivity {
     // tabs
     private Button tabOtpBtn, tabNameBtn;
     private LinearLayout tabOtp, tabName;
+    private Button accountBtn, packagesBtn;
 
     // otp tab
     private EditText accountDataInput;
@@ -106,12 +115,36 @@ public class MainActivity extends AppCompatActivity {
     // floating + exit
     private Button floatingBtn, exitBtn;
 
+    // bottom navigation + drawer (menu built programmatically, no new XML)
+    private DrawerLayout drawerLayout;
+    private BottomNavigationView bottomNav;
+    private NavigationView navDrawer;
+    private MenuItem drawerServerItem, drawerFloatingItem;
+    private static final int NAV_OTP = 1;
+    private static final int NAV_NAMES = 2;
+    private static final int NAV_PACKAGES = 3;
+    private static final int NAV_MENU = 4;
+    private static final int DRAWER_TITLE = 101;
+    private static final int DRAWER_ACCOUNT = 102;
+    private static final int DRAWER_SERVER = 103;
+    private static final int DRAWER_FLOATING = 104;
+    private static final int DRAWER_UPDATES = 105;
+    private static final int DRAWER_PACKAGES = 106;
+    private static final int DRAWER_EXIT = 107;
+
     // access / subscription gate: FAIL-CLOSED — nothing on this screen is usable
     // until the backend explicitly confirms access (see enforceAccessGate).
+    // App updates are ADVISORY only (see checkForUpdatesManual) — they never
+    // block access; the user is merely notified when a new version exists.
     private TextView accessStatus;
     private volatile boolean accessAllowed = false;
     private volatile String accessReason = "VERIFYING";
     private volatile boolean gateDialogShowing = false;
+    private volatile boolean updateAvailable = false;
+    private volatile String updateUrl = "";
+    private volatile String updateMessage = "";
+    private volatile String latestVersion = "";
+    private static boolean updateNoticeShown = false;
 
     // auto OTP actions
     private CheckBox autoCopyCheck;
@@ -165,6 +198,7 @@ public class MainActivity extends AppCompatActivity {
         bindAutoActions();
         bindFloatingAndExit();
         bindAccessBar();
+        bindNavigation();
         enforceAccessGate();
 
         // restore saved account data (parity with chrome.storage.local)
@@ -340,6 +374,10 @@ public class MainActivity extends AppCompatActivity {
         exitBtn = findViewById(R.id.exitBtn);
         accessStatus = findViewById(R.id.accessStatus);
 
+        drawerLayout = findViewById(R.id.drawerLayout);
+        bottomNav = findViewById(R.id.bottomNav);
+        navDrawer = findViewById(R.id.navDrawer);
+
         autoCopyCheck = findViewById(R.id.autoCopyCheck);
         selectedAppLabel = findViewById(R.id.selectedAppLabel);
         selectAppBtn = findViewById(R.id.selectAppBtn);
@@ -396,6 +434,7 @@ public class MainActivity extends AppCompatActivity {
         serverStatus.setTextColor(ContextCompat.getColor(this, running ? R.color.success : R.color.error));
         serverToggleBtn.setText(running ? "Stop" : "Start");
         floatingBtn.setText(FloatingService.isRunning() ? "Floating: ON" : "Floating: OFF");
+        refreshDrawerTitles();
     }
 
     // ---------------- tabs ----------------
@@ -412,6 +451,103 @@ public class MainActivity extends AppCompatActivity {
         tabNameBtn.setEnabled(otp);
         tabOtpBtn.setAlpha(otp ? 1f : 0.5f);
         tabNameBtn.setAlpha(otp ? 0.5f : 1f);
+        if (bottomNav != null) {
+            int want = otp ? NAV_OTP : NAV_NAMES;
+            if (bottomNav.getSelectedItemId() != want) bottomNav.setSelectedItemId(want);
+        }
+    }
+
+    // ---------------- bottom navigation + drawer ----------------
+
+    /**
+     * Bottom bar (OTP / Names / Packages / Menu) + sidebar drawer (Account,
+     * Server, Floating widget, Updates, Packages, Exit). Drawer actions reuse
+     * the existing card buttons via performClick(), so no behavior changes.
+     */
+    private void bindNavigation() {
+        if (bottomNav != null) {
+            Menu m = bottomNav.getMenu();
+            m.add(Menu.NONE, NAV_OTP, 0, "OTP").setIcon(android.R.drawable.ic_menu_view);
+            m.add(Menu.NONE, NAV_NAMES, 1, "Names").setIcon(android.R.drawable.ic_menu_edit);
+            m.add(Menu.NONE, NAV_PACKAGES, 2, "Packages").setIcon(android.R.drawable.ic_menu_send);
+            m.add(Menu.NONE, NAV_MENU, 3, "Menu").setIcon(android.R.drawable.ic_menu_more);
+            bottomNav.setLabelVisibilityMode(BottomNavigationView.LABEL_VISIBILITY_LABELED);
+            bottomNav.setSelectedItemId(NAV_OTP);
+            bottomNav.setOnItemSelectedListener(item -> {
+                int id = item.getItemId();
+                if (id == NAV_OTP) switchTab(true);
+                else if (id == NAV_NAMES) switchTab(false);
+                else if (id == NAV_PACKAGES && packagesBtn != null) packagesBtn.performClick();
+                else if (id == NAV_MENU && drawerLayout != null) {
+                    refreshDrawerTitles();
+                    drawerLayout.openDrawer(GravityCompat.START);
+                }
+                return true;
+            });
+        }
+        if (navDrawer != null) {
+            Menu dm = navDrawer.getMenu();
+            dm.add(Menu.NONE, DRAWER_TITLE, 0,
+                    "Rantu_OTP v" + ApiClient.appVersion(this)).setEnabled(false);
+            dm.add(Menu.NONE, DRAWER_ACCOUNT, 1, "Account")
+                    .setIcon(android.R.drawable.ic_menu_manage);
+            dm.add(Menu.NONE, DRAWER_SERVER, 2, "Start Server")
+                    .setIcon(android.R.drawable.ic_menu_compass);
+            dm.add(Menu.NONE, DRAWER_FLOATING, 3, "Floating Widget")
+                    .setIcon(android.R.drawable.ic_menu_view);
+            dm.add(Menu.NONE, DRAWER_UPDATES, 4, "Check for Updates")
+                    .setIcon(android.R.drawable.ic_menu_info_details);
+            dm.add(Menu.NONE, DRAWER_PACKAGES, 5, "Packages")
+                    .setIcon(android.R.drawable.ic_menu_send);
+            dm.add(Menu.NONE, DRAWER_EXIT, 6, "Exit App")
+                    .setIcon(android.R.drawable.ic_menu_close_clear_cancel);
+            drawerServerItem = dm.findItem(DRAWER_SERVER);
+            drawerFloatingItem = dm.findItem(DRAWER_FLOATING);
+            navDrawer.setNavigationItemSelectedListener(item -> {
+                int id = item.getItemId();
+                if (id == DRAWER_ACCOUNT && accountBtn != null) accountBtn.performClick();
+                else if (id == DRAWER_SERVER && serverToggleBtn != null) serverToggleBtn.performClick();
+                else if (id == DRAWER_FLOATING && floatingBtn != null) floatingBtn.performClick();
+                else if (id == DRAWER_UPDATES) checkForUpdatesManual();
+                else if (id == DRAWER_PACKAGES && packagesBtn != null) packagesBtn.performClick();
+                else if (id == DRAWER_EXIT) exitApp();
+                if (drawerLayout != null) drawerLayout.closeDrawer(GravityCompat.START);
+                return true;
+            });
+        }
+        if (drawerLayout != null) {
+            drawerLayout.addDrawerListener(new DrawerLayout.SimpleDrawerListener() {
+                @Override public void onDrawerOpened(View drawerView) {
+                    refreshDrawerTitles();
+                }
+            });
+            getOnBackPressedDispatcher().addCallback(this,
+                    new androidx.activity.OnBackPressedCallback(true) {
+                        @Override public void handleOnBackPressed() {
+                            if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                                drawerLayout.closeDrawer(GravityCompat.START);
+                            } else {
+                                setEnabled(false);
+                                getOnBackPressedDispatcher().onBackPressed();
+                            }
+                        }
+                    });
+        }
+        refreshDrawerTitles();
+    }
+
+    /** Keep drawer server/floating rows in sync with real state. */
+    private void refreshDrawerTitles() {
+        try {
+            if (drawerServerItem != null) {
+                drawerServerItem.setTitle(OtpServer.getInstance().isRunning()
+                        ? "Stop Server" : "Start Server");
+            }
+            if (drawerFloatingItem != null) {
+                drawerFloatingItem.setTitle(FloatingService.isRunning()
+                        ? "Floating Widget: ON" : "Floating Widget: OFF");
+            }
+        } catch (Exception ignored) {}
     }
 
     // ---------------- OTP tab (port of popup.js) ----------------
@@ -779,8 +915,8 @@ public class MainActivity extends AppCompatActivity {
     // ---------------- access gate (auth + version + subscription) ----------------
 
     private void bindAccessBar() {
-        Button accountBtn = findViewById(R.id.accountBtn);
-        Button packagesBtn = findViewById(R.id.packagesBtn);
+        accountBtn = findViewById(R.id.accountBtn);
+        packagesBtn = findViewById(R.id.packagesBtn);
         if (accountBtn != null) {
             accountBtn.setOnClickListener(v -> {
                 if (SessionManager.isLoggedIn(this)) {
@@ -829,14 +965,15 @@ public class MainActivity extends AppCompatActivity {
                 String installed = ApiClient.appVersion(MainActivity.this);
                 ApiClient.Resp ver = ApiClient.get(this,
                         "/api/versions/check?platform=android&version=" + installed, false);
-                if (ver.ok() && ver.json.optBoolean("forceUpdate", false)) {
-                    accessAllowed = false;
-                    accessReason = "FORCE_UPDATE";
-                    setAccessText("Update required");
-                    main.post(() -> showForceUpdate(
-                            ver.json.optString("updateUrl", ""),
-                            ver.json.optString("message", "Please update to continue.")));
-                    return;
+                // Updates are advisory only: record availability, notify once,
+                // and ALWAYS continue to the access checks below (never block).
+                if (ver.ok() && (ver.json.optBoolean("forceUpdate", false)
+                        || ver.json.optBoolean("updateRequired", false))) {
+                    updateAvailable = true;
+                    updateUrl = ver.json.optString("updateUrl", "");
+                    updateMessage = ver.json.optString("message", "");
+                    latestVersion = ver.json.optString("latestVersion", "");
+                    main.post(() -> showUpdateNotice(false));
                 }
             } catch (Exception e) {
                 accessAllowed = false;
@@ -925,26 +1062,60 @@ public class MainActivity extends AppCompatActivity {
         finish();
     }
 
-    private void showForceUpdate(String url, String message) {
-        if (gateDialogShowing) return;
-        gateDialogShowing = true;
+    /**
+     * Optional-update notice: informs the user a new version exists but never
+     * blocks the app. Shown once per session automatically; the navigation
+     * drawer can re-trigger it manually at any time.
+     */
+    private void showUpdateNotice(boolean manual) {
+        if (isFinishing()) return;
+        if (!manual) {
+            if (updateNoticeShown) return;
+            updateNoticeShown = true;
+        }
+        String msg = updateMessage.isEmpty()
+                ? ("A new version" + (latestVersion.isEmpty() ? "" : " (" + latestVersion + ")")
+                        + " is available.")
+                : updateMessage;
         new AlertDialog.Builder(this)
-                .setTitle("Update required")
-                .setMessage(message.isEmpty() ? "Your app version is no longer supported." : message)
-                .setCancelable(false)
+                .setTitle("Update available")
+                .setMessage(msg + "\n\nYou can keep using the app — updating is optional.")
+                .setCancelable(true)
                 .setPositiveButton("Update Now", (d, w) -> {
                     try {
-                        if (!url.isEmpty()) startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+                        if (!updateUrl.isEmpty()) startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(updateUrl)));
                         else Toast.makeText(this, "Ask admin for the new APK", Toast.LENGTH_LONG).show();
                     } catch (Exception e) {
                         Toast.makeText(this, "Invalid update URL", Toast.LENGTH_SHORT).show();
                     }
                 })
-                .setNegativeButton("Recheck", (d, w) -> {
-                    gateDialogShowing = false;
-                    enforceAccessGate();
-                })
+                .setNegativeButton("Later", null)
                 .show();
+    }
+
+    /** Manual update check for the navigation drawer. */
+    private void checkForUpdatesManual() {
+        toast("Checking for updates...");
+        net.execute(() -> {
+            try {
+                String installed = ApiClient.appVersion(MainActivity.this);
+                ApiClient.Resp ver = ApiClient.get(this,
+                        "/api/versions/check?platform=android&version=" + installed, false);
+                boolean avail = ver.ok() && (ver.json.optBoolean("forceUpdate", false)
+                        || ver.json.optBoolean("updateRequired", false));
+                if (avail) {
+                    updateAvailable = true;
+                    updateUrl = ver.json.optString("updateUrl", "");
+                    updateMessage = ver.json.optString("message", "");
+                    latestVersion = ver.json.optString("latestVersion", "");
+                    main.post(() -> showUpdateNotice(true));
+                } else {
+                    main.post(() -> toast("You're on the latest version"));
+                }
+            } catch (Exception e) {
+                main.post(() -> toast("Update check failed: offline"));
+            }
+        });
     }
 
     // ---------------- helpers ----------------
