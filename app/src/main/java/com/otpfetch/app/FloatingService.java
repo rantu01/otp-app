@@ -331,7 +331,10 @@ public class FloatingService extends Service {
     }
 
     private void showPopup() {
-        pCountry = OtpAutoActions.getCountry(this);
+        try {
+            pCountry = OtpAutoActions.getCountry(this);
+        } catch (Exception ignored) { pCountry = 0; }
+        if (pCountry < 0 || pCountry >= CountryData.COUNTRIES.length) pCountry = 0;
         // Full-screen dim layer: tapping anywhere outside the card dismisses.
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(getColor(R.color.popup_dim));
@@ -546,10 +549,13 @@ public class FloatingService extends Service {
         tint(pCopyName, R.color.accent_orange);
         pCopyName.setTextColor(getColor(R.color.on_tint));
         pGenName.setOnClickListener(v -> {
-            if (!requireServiceAccess()) return;
-            String name = OtpHelper.generateName(pCountry, pGender);
-            OtpAutoActions.setGenName(this, name);
-            showPopupName(name);
+            try {
+                if (!requireServiceAccess()) return;
+                String name = OtpHelper.generateName(pCountry, pGender);
+                if (name == null || name.trim().isEmpty()) return;
+                OtpAutoActions.setGenName(this, name);
+                showPopupName(name);
+            } catch (Exception ignored) {}
         });
         pCopyName.setOnClickListener(v -> copy(
                 (pFirstName.getText().toString() + " " + pLastName.getText().toString()).trim()));
@@ -627,13 +633,16 @@ public class FloatingService extends Service {
     }
 
     private void showPopupName(String fullName) {
-        if (pFirstName == null || pLastName == null) return;
-        pFirstName.setText(firstOf(fullName));
-        pLastName.setText(lastOf(fullName));
-        if (pSuggestedEmail != null) {
-            String sug = OtpHelper.suggestEmail(fullName, pCountry);
-            pSuggestedEmail.setText(sug == null ? "" : sug);
-        }
+        try {
+            if (pFirstName == null || pLastName == null) return;
+            if (fullName == null || fullName.trim().isEmpty()) return;
+            pFirstName.setText(firstOf(fullName));
+            pLastName.setText(lastOf(fullName));
+            if (pSuggestedEmail != null) {
+                String sug = OtpHelper.suggestEmail(fullName, pCountry);
+                pSuggestedEmail.setText(sug == null ? "" : sug);
+            }
+        } catch (Exception ignored) {}
     }
 
     private void refreshDomainUi() {

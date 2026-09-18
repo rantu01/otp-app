@@ -105,20 +105,30 @@ public class PackageActivity extends AppCompatActivity {
                 ApiClient.Resp p = ApiClient.get(this, "/api/packages", true);
                 ApiClient.Resp m = ApiClient.get(this, "/api/payment-methods", true);
                 ApiClient.Resp mine = ApiClient.get(this, "/api/payments/mine", true);
+                ApiClient.Resp subs = null;
+                try { subs = ApiClient.get(this, "/api/subscriptions/mine", true); } catch (Exception ignored) {}
                 if (!p.ok()) throw new Exception(p.json.optString("error", "Failed to load packages"));
                 packages = p.json.optJSONArray("packages");
                 if (packages == null) packages = new JSONArray();
                 methods = m.ok() ? m.json.optJSONArray("paymentMethods") : new JSONArray();
                 if (methods == null) methods = new JSONArray();
                 JSONArray my = mine.ok() ? mine.json.optJSONArray("payments") : new JSONArray();
+                final JSONObject current;
+                try { current = subs != null && subs.ok() ? subs.json.optJSONObject("current") : null; }
+                catch (Exception e) { throw new RuntimeException(e); }
+                final JSONObject curFinal = current;
+                final String currentLine = currentPackageLine(current);
                 runOnUiThread(() -> {
                     renderPackages();
                     renderMethods();
                     renderMine(my == null ? new JSONArray() : my);
                     if (pending) {
-                        statusView.setText("Account pending admin approval — choose a package below to activate.");
+                        statusView.setText(currentLine.isEmpty()
+                                ? "Account pending admin approval — choose a package below to activate."
+                                : (currentLine + "\nAccount pending admin approval — choose a package below to activate."));
                     } else {
-                        statusView.setText(packages.length() == 0 ? "No packages available right now." : "Choose a package:");
+                        String base = packages.length() == 0 ? "No packages available right now." : "Choose a package:";
+                        statusView.setText(currentLine.isEmpty() ? base : (currentLine + "\n" + base));
                     }
                 });
             } catch (Exception e) {
@@ -127,8 +137,29 @@ public class PackageActivity extends AppCompatActivity {
         });
     }
 
-    private void renderPackages() {
-        packageList.removeAllViews();
+    /** "Current: Weekly — 5 days left (till 2026-09-20)" or "" when none. */
+    private static String currentPackageLine(JSONObject cur) {
+        try {
+            if (cur == null) return "";
+            String name = cur.optString("packageName", "");
+            String exp = cur.optString("expire", "");
+            if (name.isEmpty() && exp.isEmpty()) return "";
+            if (exp == null || exp.isEmpty()) return "Current: " + (name.isEmpty() ? "Free" : name);
+            long ms = 0;
+            try {
+                java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US);
+                f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+                java.util.Date d = f.parse(exp.length() >= 19 ? exp.substring(0, 19) : exp);
+                if (d != null) ms = d.getTime();
+            } catch (Exception ignored) { return "Current: " + name; }
+            long days = (ms - System.currentTimeMillis()) / (24L * 60 * 60 * 1000);
+            String left = days < 0 ? "expired" : (days == 0 ? "expires today" : (days == 1 ? "1 day left" : days + " days left"));
+            String till = exp.length() >= 10 ? exp.substring(0, 10) : exp;
+            return "Current: " + name + " — " + left + " (till " + till + ")";
+        } catch (Exception ignored) { return ""; }
+    }
+
+    private void renderPackages() {        packageList.removeAllViews();
         for (int i = 0; i < packages.length(); i++) {
             final int idx = i;
             JSONObject o = packages.optJSONObject(i);

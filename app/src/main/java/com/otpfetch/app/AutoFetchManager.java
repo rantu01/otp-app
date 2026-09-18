@@ -23,8 +23,10 @@ import java.util.concurrent.Executors;
 public final class AutoFetchManager {
 
     private static final String TAG = "AutoFetch";
-    private static final long DEBOUNCE_MS = 800;
-    private static final long REFIRE_TTL_MS = 30_000;
+    // Data-saver: longer debounce avoids a Graph fetch per keystroke;
+    // longer TTL stops re-fetch loops when both UIs echo the same line.
+    private static final long DEBOUNCE_MS = 1500;
+    private static final long REFIRE_TTL_MS = 60_000;
 
     public interface StatusListener {
         void onAutoFetchStarted(String email);

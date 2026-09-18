@@ -145,6 +145,10 @@ public class MainActivity extends AppCompatActivity {
     private volatile String updateMessage = "";
     private volatile String latestVersion = "";
     private static boolean updateNoticeShown = false;
+    // Data-saver: version checks are advisory — cache for 15 min so resume()
+    // does not re-download the version payload on every foreground.
+    private static volatile long lastVersionCheckAt = 0;
+    private static final long VERSION_CHECK_TTL_MS = 15 * 60 * 1000;
 
     // auto OTP actions
     private CheckBox autoCopyCheck;
@@ -445,15 +449,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void switchTab(boolean otp) {
-        tabOtp.setVisibility(otp ? View.VISIBLE : View.GONE);
-        tabName.setVisibility(otp ? View.GONE : View.VISIBLE);
-        tabOtpBtn.setEnabled(!otp);
-        tabNameBtn.setEnabled(otp);
-        tabOtpBtn.setAlpha(otp ? 1f : 0.5f);
-        tabNameBtn.setAlpha(otp ? 0.5f : 1f);
-        if (bottomNav != null) {
-            int want = otp ? NAV_OTP : NAV_NAMES;
-            if (bottomNav.getSelectedItemId() != want) bottomNav.setSelectedItemId(want);
+        try {
+            if (tabOtp == null || tabName == null || tabOtpBtn == null || tabNameBtn == null) return;
+            tabOtp.setVisibility(otp ? View.VISIBLE : View.GONE);
+            tabName.setVisibility(otp ? View.GONE : View.VISIBLE);
+            tabOtpBtn.setEnabled(!otp);
+            tabNameBtn.setEnabled(otp);
+            tabOtpBtn.setAlpha(otp ? 1f : 0.5f);
+            tabNameBtn.setAlpha(otp ? 0.5f : 1f);
+            if (bottomNav != null) {
+                int want = otp ? NAV_OTP : NAV_NAMES;
+                if (bottomNav.getSelectedItemId() != want) bottomNav.setSelectedItemId(want);
+            }
+        } catch (Exception e) {
+            try { Toast.makeText(this, "Tab error: " + e.getMessage(), Toast.LENGTH_SHORT).show(); } catch (Exception ignored) {}
         }
     }
 
@@ -696,82 +705,127 @@ public class MainActivity extends AppCompatActivity {
     // ---------------- Name tab (port of popup.js) ----------------
 
     private void bindNameTab() {
-        currentCountry = OtpAutoActions.getCountry(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item, CountryData.displayNames());
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        countrySpinner.setAdapter(adapter);
-        if (currentCountry >= 0 && currentCountry < CountryData.COUNTRIES.length) {
-            countrySpinner.setSelection(currentCountry);
-        }
-        refreshDomainView();
+        try {
+            currentCountry = OtpAutoActions.getCountry(this);
+            if (currentCountry < 0 || currentCountry >= CountryData.COUNTRIES.length) currentCountry = 0;
+            ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                    android.R.layout.simple_spinner_item, CountryData.displayNames());
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            if (countrySpinner != null) {
+                countrySpinner.setAdapter(adapter);
+                if (currentCountry >= 0 && currentCountry < CountryData.COUNTRIES.length) {
+                    countrySpinner.setSelection(currentCountry);
+                }
+            }
+            refreshDomainView();
+            if (countrySpinner != null) {
         countrySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                if (mProgrammaticCountry) return;
-                currentCountry = pos;
-                OtpAutoActions.setCountry(MainActivity.this, pos);
-                refreshDomainView();
+                try {
+                    if (mProgrammaticCountry) return;
+                    if (pos < 0 || pos >= CountryData.COUNTRIES.length) return;
+                    currentCountry = pos;
+                    OtpAutoActions.setCountry(MainActivity.this, pos);
+                    refreshDomainView();
+                } catch (Exception ignored) {}
             }
             @Override public void onNothingSelected(AdapterView<?> p) {}
         });
-        genderGroup.setOnCheckedChangeListener((group, checkedId) -> {
-            if (mProgrammaticGender) return;
-            String gender = "male";
-            if (checkedId == R.id.genderFemale) gender = "female";
-            else if (checkedId == R.id.genderBoth) gender = "both";
-            OtpAutoActions.setGender(this, gender);
-        });
-        genNameBtn.setOnClickListener(v -> {
-            if (!accessAllowed) {
-                toast("Locked — access not approved");
-                enforceAccessGate();
-                return;
             }
-            int checked = genderGroup.getCheckedRadioButtonId();
-            String gender = "male";
-            if (checked == R.id.genderFemale) gender = "female";
-            else if (checked == R.id.genderBoth) gender = "both";
-            String name = OtpHelper.generateName(currentCountry, gender);
-            OtpAutoActions.setGenName(this, name);
-            showGeneratedName(name);
-            nameStatus.setText("✓");
-            nameStatus.setTextColor(ContextCompat.getColor(this, R.color.success));
+            if (genderGroup != null) {
+        genderGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            try {
+                if (mProgrammaticGender) return;
+                String gender = "male";
+                if (checkedId == R.id.genderFemale) gender = "female";
+                else if (checkedId == R.id.genderBoth) gender = "both";
+                OtpAutoActions.setGender(this, gender);
+            } catch (Exception ignored) {}
         });
+            }
+            if (genNameBtn != null) {
+        genNameBtn.setOnClickListener(v -> {
+            try {
+                if (!accessAllowed) {
+                    toast("Locked — access not approved");
+                    enforceAccessGate();
+                    return;
+                }
+                int checked = genderGroup != null ? genderGroup.getCheckedRadioButtonId() : R.id.genderMale;
+                String gender = "male";
+                if (checked == R.id.genderFemale) gender = "female";
+                else if (checked == R.id.genderBoth) gender = "both";
+                String name = OtpHelper.generateName(currentCountry, gender);
+                if (name == null || name.trim().isEmpty()) {
+                    if (nameStatus != null) nameStatus.setText("Try again");
+                    return;
+                }
+                OtpAutoActions.setGenName(this, name);
+                showGeneratedName(name);
+                if (nameStatus != null) {
+                    nameStatus.setText("✓");
+                    nameStatus.setTextColor(ContextCompat.getColor(this, R.color.success));
+                }
+            } catch (Exception e) {
+                try { toast("Name error: " + e.getMessage()); } catch (Exception ignored) {}
+            }
+        });
+            }
+        if (firstNameView != null) {
         firstNameView.setOnClickListener(v -> {
             copyToClipboard(firstNameView.getText().toString());
             toast("Copied");
         });
+        }
+        if (lastNameView != null) {
         lastNameView.setOnClickListener(v -> {
             copyToClipboard(lastNameView.getText().toString());
             toast("Copied");
         });
+        }
+        if (suggestedEmailView != null) {
         suggestedEmailView.setOnClickListener(v -> {
             copyToClipboard(suggestedEmailView.getText().toString());
             toast("Copied");
         });
+        }
+        if (copyNameBtn != null) {
         copyNameBtn.setOnClickListener(v -> {
-            copyToClipboard((firstNameView.getText().toString()
-                    + " " + lastNameView.getText().toString()).trim());
-            flash(copyNameBtn, "✓");
+            try {
+                String f = firstNameView != null ? firstNameView.getText().toString() : "";
+                String l = lastNameView != null ? lastNameView.getText().toString() : "";
+                copyToClipboard((f + " " + l).trim());
+                flash(copyNameBtn, "✓");
+            } catch (Exception ignored) {}
         });
+        }
+        } catch (Exception e) {
+            try { toast("Names unavailable: " + e.getMessage()); } catch (Exception ignored) {}
+        }
     }
 
     private void refreshDomainView() {
         if (domainView == null) return;
         try {
+            if (currentCountry < 0 || currentCountry >= CountryData.COUNTRIES.length) currentCountry = 0;
             domainView.setText("@" + CountryData.byIndex(currentCountry).domain);
         } catch (Exception ignored) {}
     }
 
     private void showGeneratedName(String fullName) {
-        if (nameContainer == null || firstNameView == null || lastNameView == null) return;
-        firstNameView.setText(firstOf(fullName));
-        lastNameView.setText(lastOf(fullName));
-        if (suggestedEmailView != null) {
-            String sug = OtpHelper.suggestEmail(fullName, currentCountry);
-            suggestedEmailView.setText(sug == null ? "" : sug);
+        try {
+            if (nameContainer == null || firstNameView == null || lastNameView == null) return;
+            if (fullName == null || fullName.trim().isEmpty()) return;
+            firstNameView.setText(firstOf(fullName));
+            lastNameView.setText(lastOf(fullName));
+            if (suggestedEmailView != null) {
+                String sug = OtpHelper.suggestEmail(fullName, currentCountry);
+                suggestedEmailView.setText(sug == null ? "" : sug);
+            }
+            nameContainer.setVisibility(View.VISIBLE);
+        } catch (Exception e) {
+            try { toast("Name error: " + e.getMessage()); } catch (Exception ignored) {}
         }
-        nameContainer.setVisibility(View.VISIBLE);
     }
 
     private static String firstOf(String fullName) {
@@ -953,6 +1007,27 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    /** " (5 days left)" / " (expires today)" / "" when no expiry (e.g. Free role). */
+    private static String daysRemainingText(String expireIso) {
+        try {
+            if (expireIso == null || expireIso.isEmpty()) return "";
+            long ms = 0;
+            try {
+                java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US);
+                f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+                String cut = expireIso.length() >= 19 ? expireIso.substring(0, 19) : expireIso;
+                java.util.Date d = f.parse(cut);
+                if (d != null) ms = d.getTime();
+            } catch (Exception ignored) { return ""; }
+            if (ms <= 0) return "";
+            long days = (ms - System.currentTimeMillis()) / (24L * 60 * 60 * 1000);
+            if (days < 0) return " (expired)";
+            if (days == 0) return " (expires today)";
+            if (days == 1) return " (1 day left)";
+            return " (" + days + " days left)";
+        } catch (Exception ignored) { return ""; }
+    }
+
     /**
      * Startup + resume flow: version check -> login check -> live access check.
      * FAIL-CLOSED: any denial, dead session or unreachable backend bounces out
@@ -962,7 +1037,11 @@ public class MainActivity extends AppCompatActivity {
     private void enforceAccessGate() {
         net.execute(() -> {
             try {
-                String installed = ApiClient.appVersion(MainActivity.this);
+                // Advisory update check, cached (see VERSION_CHECK_TTL_MS).
+                long now0 = System.currentTimeMillis();
+                if (now0 - lastVersionCheckAt > VERSION_CHECK_TTL_MS) {
+                    lastVersionCheckAt = now0;
+                    String installed = ApiClient.appVersion(MainActivity.this);
                 ApiClient.Resp ver = ApiClient.get(this,
                         "/api/versions/check?platform=android&version=" + installed, false);
                 // Updates are advisory only: record availability, notify once,
@@ -1002,7 +1081,8 @@ public class MainActivity extends AppCompatActivity {
                 String pkg = gate.packageName.isEmpty() ? "package" : gate.packageName;
                 String till = gate.expireDate.length() >= 10
                         ? " till " + gate.expireDate.substring(0, 10) : "";
-                setAccessText("✓ Active: " + pkg + till);
+                String days = daysRemainingText(gate.expireDate);
+                setAccessText("✓ Active: " + pkg + till + days);
                 return;
             }
             if (gate.needsPackage()) {

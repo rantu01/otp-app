@@ -65,9 +65,11 @@ public class OtpServer {
     private static final long OTP_CACHE_TTL_MS = 30_000;
     private static final long TOKEN_SAFETY_MARGIN_MS = 300_000;
     private static final int SEEN_LIMIT = 50;
-    private static final int POLL_INTERVAL_MS = 250;
-    private static final int MAX_RETRIES = 30;
-    private static final int RETRY_DELAY_MS = 250;
+    // Data-saver: the original 250 ms poller re-downloaded inbox+junk ~4x/sec.
+    // 5 s keeps re-sent OTPs arriving promptly while cutting mobile data ~20x.
+    private static final int POLL_INTERVAL_MS = 5000;
+    private static final int MAX_RETRIES = 12;
+    private static final int RETRY_BASE_DELAY_MS = 1000;
 
     public interface LogListener {
         void onLog(String line);
@@ -437,7 +439,7 @@ public class OtpServer {
     // ================= graph fetching =================
 
     private static final String GRAPH_QUERY =
-            "$top=10&$select=subject,bodyPreview,receivedDateTime,from,id&$orderby=receivedDateTime desc";
+            "$top=5&$select=subject,bodyPreview,receivedDateTime,from,id&$orderby=receivedDateTime desc";
 
     private List<GraphMsg> fetchInboxAndJunk(String accessToken) {
         ExecutorService exec = clientPool;
@@ -590,6 +592,7 @@ public class OtpServer {
 
         // NOTE: no instant cache return here. A stale cached 5-digit code
         // must never shadow a freshly arrived 6-digit code.
+        // Backoff: 1s, 1.5s, 2s ... caps total mobile data on slow inboxes.
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             String token = getAccessTokenForAccount(full);
             if (token == null) {
@@ -602,7 +605,7 @@ public class OtpServer {
                 return new FetchResult(true, result.code, null);
             }
             if (attempt < MAX_RETRIES) {
-                try { Thread.sleep(RETRY_DELAY_MS); } catch (InterruptedException e) { break; }
+                try { Thread.sleep(Math.min(5000, RETRY_BASE_DELAY_MS + attempt * 500)); } catch (InterruptedException e) { break; }
             }
         }
         // Last resort: recent cache (covers "already shown" re-taps).
