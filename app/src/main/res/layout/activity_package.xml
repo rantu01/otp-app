@@ -80,13 +80,15 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:backgroundTint="@color/go_green"
-            android:text="Submit Payment" />
+            android:text="Submit Payment"
+            android:textColor="@color/on_tint" />
 
         <Button
             android:id="@+id/pkgRefreshBtn"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
+            android:backgroundTint="@color/btn_primary"
             android:text="Refresh" />
 
         <TextView

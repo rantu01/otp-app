@@ -26,4 +26,13 @@
     <color name="popup_dim">#99000000</color>
     <color name="input_hint">#8A8F98</color>
     <color name="ic_launcher_background">#000000</color>
+    <!-- Text on bright tinted buttons: white in light mode (dark text in night mode) -->
+    <color name="on_tint">#FFFFFF</color>
+    <!-- Default purple button (matches old colorPrimary look) -->
+    <color name="btn_primary">#7C4DFF</color>
+    <!-- Programmatic package cards (were hardcoded, now theme-aware) -->
+    <color name="pkg_card">#F3EFFF</color>
+    <color name="pkg_selected">#E8F5E9</color>
+    <color name="pkg_row">#FFFFFF</color>
+    <color name="muted_text">#6B7280</color>
 </resources>

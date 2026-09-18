@@ -435,12 +435,14 @@ public class FloatingService extends Service {
 
         pCopyEmail = actionButton("Copy Email");
         tint(pCopyEmail, R.color.accent_teal);
+        pCopyEmail.setTextColor(getColor(R.color.on_tint));
         pCopyEmail.setVisibility(View.GONE);
         pCopyEmail.setOnClickListener(v -> copy(pEmail.getText().toString()));
         body.addView(pCopyEmail);
 
         pGetCode = actionButton("GET CODE");
         tint(pGetCode, R.color.go_green);
+        pGetCode.setTextColor(getColor(R.color.on_tint));
         pGetCode.setOnClickListener(v -> popupGetCode());
         body.addView(pGetCode);
 
@@ -458,6 +460,7 @@ public class FloatingService extends Service {
 
         pCopyCode = actionButton("Copy");
         tint(pCopyCode, R.color.go_green);
+        pCopyCode.setTextColor(getColor(R.color.on_tint));
         pCopyCode.setOnClickListener(v -> copy(pCode.getText().toString()));
         body.addView(pCopyCode);
 
@@ -514,6 +517,7 @@ public class FloatingService extends Service {
 
         pGenName = actionButton("Generate");
         tint(pGenName, R.color.accent_orange);
+        pGenName.setTextColor(getColor(R.color.on_tint));
         LinearLayout nameRow = new LinearLayout(this);
         nameRow.setOrientation(LinearLayout.HORIZONTAL);
         pFirstName = nameField("---", R.color.accent_blue);
@@ -540,6 +544,7 @@ public class FloatingService extends Service {
         if (savedName != null && !savedName.isEmpty()) showPopupName(savedName);
         Button pCopyName = actionButton("Copy");
         tint(pCopyName, R.color.accent_orange);
+        pCopyName.setTextColor(getColor(R.color.on_tint));
         pGenName.setOnClickListener(v -> {
             if (!requireServiceAccess()) return;
             String name = OtpHelper.generateName(pCountry, pGender);
@@ -552,6 +557,7 @@ public class FloatingService extends Service {
 
         Button openApp = actionButton("Full App");
         tint(openApp, R.color.accent_teal);
+        openApp.setTextColor(getColor(R.color.on_tint));
         openApp.setOnClickListener(v -> {
             hidePopup();
             Intent i = new Intent(this, MainActivity.class);

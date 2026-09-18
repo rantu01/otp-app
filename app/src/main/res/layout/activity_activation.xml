@@ -70,6 +70,8 @@
                 android:hint="Enter Device ID manually (if needed)"
                 android:inputType="text"
                 android:padding="10dp"
+                android:textColor="#2D2A4A"
+                android:textColorHint="#8A8F98"
                 android:textSize="14sp" />
 
             <EditText
@@ -81,6 +83,8 @@
                 android:hint="Server URL (e.g. http://10.0.2.2:4000)"
                 android:inputType="textUri"
                 android:padding="10dp"
+                android:textColor="#2D2A4A"
+                android:textColorHint="#8A8F98"
                 android:textSize="13sp" />
 
             <TextView
@@ -108,8 +112,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="EXIT"
-                android:textColor="#1B9BD7"
-                android:textSize="16sp" />
+                android:textColor="#0B7285"
+                android:textSize="16sp"
+                android:textStyle="bold" />
 
             <Button
                 android:id="@+id/nextBtn"
@@ -118,7 +123,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="28dp"
                 android:text="next"
-                android:textColor="#D9B800"
+                android:textColor="#8A6D00"
                 android:textSize="24sp"
                 android:textStyle="bold" />
         </LinearLayout>

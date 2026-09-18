@@ -152,12 +152,14 @@ public class PackageActivity extends AppCompatActivity {
             LinearLayout card = new LinearLayout(this);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(16, 16, 16, 16);
-            card.setBackgroundColor(idx == selectedMethod ? 0xFFE8F5E9 : 0xFFF3EFFF);
+            card.setBackgroundColor(ContextCompat.getColor(this,
+                    idx == selectedMethod ? R.color.pkg_selected : R.color.pkg_card));
 
             TextView title = new TextView(this);
             title.setText(o.optString("name") + "  (" + o.optString("accountType", "Personal") + ")");
             title.setTextSize(15);
             title.setTypeface(null, android.graphics.Typeface.BOLD);
+            title.setTextColor(ContextCompat.getColor(this, R.color.title_text));
             card.addView(title);
 
             TextView num = new TextView(this);
@@ -170,6 +172,7 @@ public class PackageActivity extends AppCompatActivity {
             TextView ins = new TextView(this);
             ins.setText(o.optString("instructions", ""));
             ins.setTextSize(12);
+            ins.setTextColor(ContextCompat.getColor(this, R.color.muted_text));
             card.addView(ins);
 
             LinearLayout row = new LinearLayout(this);
@@ -218,7 +221,8 @@ public class PackageActivity extends AppCompatActivity {
             s += "\nTxID: " + o.optString("transactionId");
             t.setText(s);
             t.setPadding(12, 12, 12, 12);
-            t.setBackgroundColor(0xFFFFFFFF);
+            t.setBackgroundColor(ContextCompat.getColor(this, R.color.pkg_row));
+            t.setTextColor(ContextCompat.getColor(this, R.color.title_text));
             myPaymentsList.addView(t);
             View sep = new View(this);
             sep.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 8));

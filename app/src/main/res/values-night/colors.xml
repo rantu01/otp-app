@@ -25,4 +25,14 @@
     <color name="bubble_text">#FFFFFF</color>
     <color name="popup_dim">#CC000000</color>
     <color name="input_hint">#9AA0A6</color>
+    <color name="ic_launcher_background">#000000</color>
+    <!-- Text on bright tinted buttons: dark in night mode for contrast -->
+    <color name="on_tint">#14101F</color>
+    <!-- Default purple button, deepened for night contrast -->
+    <color name="btn_primary">#5E35B1</color>
+    <!-- Programmatic package cards (were hardcoded light, now theme-aware) -->
+    <color name="pkg_card">#2E2650</color>
+    <color name="pkg_selected">#1C3A2A</color>
+    <color name="pkg_row">#221C38</color>
+    <color name="muted_text">#A1A1AA</color>
 </resources>

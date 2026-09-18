@@ -50,6 +50,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:backgroundTint="@color/btn_primary"
                     android:text="Account"
                     android:textSize="12sp" />
 
@@ -59,6 +60,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
+                    android:backgroundTint="@color/btn_primary"
                     android:text="Packages"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -105,7 +107,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:backgroundTint="@color/accent_teal"
-                android:text="OTP" />
+                android:text="OTP"
+                android:textColor="@color/on_tint" />
 
             <Button
                 android:id="@+id/tabNameBtn"
@@ -115,7 +118,8 @@
                 android:layout_weight="1"
                 android:alpha="0.5"
                 android:backgroundTint="@color/accent_orange"
-                android:text="Names" />
+                android:text="Names"
+                android:textColor="@color/on_tint" />
         </LinearLayout>
 
         <!-- TAB 1: OTP -->
@@ -170,16 +174,18 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:backgroundTint="@color/accent_teal"
-                    android:text="Copy Email" />
+                    android:text="Copy Email"
+                    android:textColor="@color/on_tint" />
             </LinearLayout>
 
             <Button
-                android:id="@+id/getCodeBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:backgroundTint="@color/go_green"
-                android:text="GET CODE" />
+            android:id="@+id/getCodeBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="@color/go_green"
+            android:text="GET CODE"
+            android:textColor="@color/on_tint" />
 
             <TextView
                 android:id="@+id/status"
@@ -214,7 +220,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:backgroundTint="@color/go_green"
-                    android:text="Copy" />
+                    android:text="Copy"
+                    android:textColor="@color/on_tint" />
             </LinearLayout>
 
             <Button
@@ -286,12 +293,13 @@
             </RadioGroup>
 
             <Button
-                android:id="@+id/genNameBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:backgroundTint="@color/accent_orange"
-                android:text="Generate" />
+            android:id="@+id/genNameBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:backgroundTint="@color/accent_orange"
+            android:text="Generate"
+            android:textColor="@color/on_tint" />
 
             <LinearLayout
                 android:id="@+id/nameContainer"
@@ -353,11 +361,12 @@
                     android:textStyle="bold" />
 
                 <Button
-                    android:id="@+id/copyNameBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:backgroundTint="@color/accent_orange"
-                    android:text="Copy" />
+                android:id="@+id/copyNameBtn"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:backgroundTint="@color/accent_orange"
+                android:text="Copy"
+                android:textColor="@color/on_tint" />
             </LinearLayout>
 
             <TextView
@@ -399,18 +408,20 @@
                 android:textStyle="bold" />
 
             <Button
-                android:id="@+id/selectAppBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:backgroundTint="@color/accent_teal"
-                android:text="Select App" />
+            android:id="@+id/selectAppBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:backgroundTint="@color/accent_teal"
+            android:text="Select App"
+            android:textColor="@color/on_tint" />
 
             <Button
-                android:id="@+id/clearAppBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Clear App" />
+            android:id="@+id/clearAppBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:backgroundTint="@color/btn_primary"
+            android:text="Clear App" />
         </LinearLayout>
 
         <Button
