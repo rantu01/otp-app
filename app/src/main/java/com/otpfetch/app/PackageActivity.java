@@ -45,7 +45,7 @@ public class PackageActivity extends AppCompatActivity {
         // Hard entry gate: no session -> Auth. Logged-in sessions are verified
         // server-side in loadAll()/onResume (approved -> Main, blocked -> Auth).
         if (!SessionManager.isLoggedIn(this)) {
-            Intent i = new Intent(this, AuthActivity.class);
+            Intent i = new Intent(this, ActivationActivity.class);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             startActivity(i);
             finish();
@@ -94,7 +94,7 @@ public class PackageActivity extends AppCompatActivity {
                         SessionManager.logout(this);
                         try { stopService(new Intent(this, FloatingService.class)); } catch (Exception ignored) {}
                         Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
-                        Intent i = new Intent(this, AuthActivity.class);
+                        Intent i = new Intent(this, ActivationActivity.class);
                         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                         startActivity(i);
                         finish();
@@ -254,11 +254,11 @@ public class PackageActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     submitBtn.setEnabled(true);
                     if (r.code == 401) {
-                        bounceToAuth("Session expired. Please login again.");
+                        bounceToActivation("Session expired. Please reactivate.");
                         return;
                     }
                     if (r.code == 403) {
-                        bounceToAuth(r.json.optString("error", "Access denied."));
+                        bounceToActivation(r.json.optString("error", "Access denied."));
                         return;
                     }
                     if (r.ok()) {
@@ -288,12 +288,12 @@ public class PackageActivity extends AppCompatActivity {
         return b;
     }
 
-    private void bounceToAuth(String msg) {
+    private void bounceToActivation(String msg) {
         if (isFinishing()) return;
         SessionManager.logout(this);
         try { stopService(new Intent(this, FloatingService.class)); } catch (Exception ignored) {}
         Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
-        Intent i = new Intent(this, AuthActivity.class);
+        Intent i = new Intent(this, ActivationActivity.class);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(i);
         finish();
@@ -308,7 +308,7 @@ public class PackageActivity extends AppCompatActivity {
                 .setMessage("The server could not be reached. This screen stays locked until access is verified.")
                 .setCancelable(false)
                 .setPositiveButton("Retry", (d, w) -> loadAll())
-                .setNegativeButton("Logout", (d, w) -> bounceToAuth("Logged out."))
+                .setNegativeButton("Logout", (d, w) -> bounceToActivation("Logged out."))
                 .show();
     }
 
@@ -318,7 +318,7 @@ public class PackageActivity extends AppCompatActivity {
         if (isFinishing()) return;
         // Approval may have landed while away (or access revoked): re-verify.
         if (!SessionManager.isLoggedIn(this)) {
-            bounceToAuth("Please login.");
+            bounceToActivation("Please activate this device.");
             return;
         }
         net.execute(() -> {
@@ -337,7 +337,7 @@ public class PackageActivity extends AppCompatActivity {
                 });
             } else if (!gate.needsPackage()) {
                 final String msg = gate.message.isEmpty() ? "Access denied." : gate.message;
-                runOnUiThread(() -> bounceToAuth(msg));
+                runOnUiThread(() -> bounceToActivation(msg));
             }
         });
     }

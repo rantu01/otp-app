@@ -17,9 +17,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Sole app entry point (LAUNCHER). Login / Register against the shared backend,
- * and — on every cold start with a saved session — re-verifies backend access
- * before routing anywhere:
+ * Credential Login / Register (DORMANT fallback, not in the UI flow).
+ * The User App now opens on ActivationActivity (device activation) instead;
+ * this screen is kept working but unlinked. Login / Register against the
+ * shared backend, and — on every cold start with a saved session —
+ * re-verifies backend access before routing anywhere:
  *
  *   access OK              -> MainActivity (Home)
  *   PENDING / NO_PACKAGE   -> PackageActivity (purchase/approval flow only)

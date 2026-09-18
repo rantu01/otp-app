@@ -14,6 +14,8 @@ public final class SessionManager {
     private static final String KEY_TOKEN = "apiToken";
     private static final String KEY_USER = "apiUserJson";
     private static final String KEY_BASE = "apiBaseUrl";
+    private static final String KEY_DEVICE = "deviceId";
+    private static final String KEY_DEVICE_FALLBACK = "deviceIdFallback";
     /** Emulator loopback to host PC; real devices must set LAN IP in Auth screen. */
     public static final String DEFAULT_BASE = "http://10.0.2.2:4000";
 
@@ -60,5 +62,29 @@ public final class SessionManager {
 
     public static void logout(Context ctx) {
         prefs(ctx).edit().remove(KEY_TOKEN).remove(KEY_USER).apply();
+    }
+
+    /** Device ID submitted on the activation screen (manual entry or auto-detected). */
+    public static String getDeviceId(Context ctx) {
+        return prefs(ctx).getString(KEY_DEVICE, "");
+    }
+
+    public static void setDeviceId(Context ctx, String id) {
+        prefs(ctx).edit().putString(KEY_DEVICE, id == null ? "" : id.trim()).apply();
+    }
+
+    /**
+     * Stable per-install fallback when the OS provides no usable ANDROID_ID.
+     * Generated once and persisted, so the activation screen is stable.
+     */
+    public static String getOrCreateFallbackDeviceId(Context ctx) {
+        SharedPreferences p = prefs(ctx);
+        String v = p.getString(KEY_DEVICE_FALLBACK, "");
+        if (v == null || !v.matches("(?i)[a-f0-9]{16}")) {
+            String rand = java.util.UUID.randomUUID().toString().replace("-", "").toLowerCase();
+            v = rand.substring(0, 16);
+            p.edit().putString(KEY_DEVICE_FALLBACK, v).apply();
+        }
+        return v;
     }
 }

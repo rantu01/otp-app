@@ -139,11 +139,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         // Hard entry gate: no session -> Auth immediately, before anything else.
-        // (AuthActivity routes here only after server approval, but the back
+        // (ActivationActivity routes here only after server approval, but the back
         // stack, recents, notifications and explicit intents must never be able
         // to land on Home ungated.)
         if (!SessionManager.isLoggedIn(this)) {
-            Intent noSession = new Intent(this, AuthActivity.class);
+            Intent noSession = new Intent(this, ActivationActivity.class);
             noSession.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             startActivity(noSession);
             finish();
@@ -792,18 +792,18 @@ public class MainActivity extends AppCompatActivity {
                                     + "\nAccess: " + accessReason)
                             .setPositiveButton("Refresh", (d, w) -> enforceAccessGate())
                             .setNegativeButton("Logout", (d, w) -> {
-                                bounceTo(AuthActivity.class, true);
+                                bounceTo(ActivationActivity.class, true);
                             })
                             .show();
                 } else {
-                    startActivity(new Intent(this, AuthActivity.class));
+                    startActivity(new Intent(this, ActivationActivity.class));
                 }
             });
         }
         if (packagesBtn != null) {
             packagesBtn.setOnClickListener(v -> {
                 if (!SessionManager.isLoggedIn(this)) {
-                    startActivity(new Intent(this, AuthActivity.class));
+                    startActivity(new Intent(this, ActivationActivity.class));
                     return;
                 }
                 startActivity(new Intent(this, PackageActivity.class));
@@ -847,7 +847,7 @@ public class MainActivity extends AppCompatActivity {
             if (!SessionManager.isLoggedIn(this)) {
                 accessAllowed = false;
                 accessReason = "NOT_LOGGED_IN";
-                main.post(() -> bounceTo(AuthActivity.class, false));
+                main.post(() -> bounceTo(ActivationActivity.class, false));
                 return;
             }
             final AccessGate.Result gate;
@@ -881,7 +881,7 @@ public class MainActivity extends AppCompatActivity {
             setAccessText("Access denied (" + gate.reason + ")");
             main.post(() -> {
                 toast(msg);
-                bounceTo(AuthActivity.class, true);
+                bounceTo(ActivationActivity.class, true);
             });
         });
     }
@@ -902,7 +902,7 @@ public class MainActivity extends AppCompatActivity {
                     })
                     .setNegativeButton("Logout", (d, w) -> {
                         gateDialogShowing = false;
-                        bounceTo(AuthActivity.class, true);
+                        bounceTo(ActivationActivity.class, true);
                     })
                     .show();
         });

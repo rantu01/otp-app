@@ -17,8 +17,8 @@ import org.json.JSONObject;
  *                                  pending accounts reach packages so the admin
  *                                  can approve them via payment verification)
  *  - DISABLED / ACCESS_DENIED / NO_ACCOUNT / SESSION_EXPIRED / anything else
- *                               -> AuthActivity (fully locked out, session cleared)
- *  - HTTP 401                   -> session dead: logout + AuthActivity
+ *                               -> ActivationActivity (fully locked out, session cleared)
+ *  - HTTP 401                   -> session dead: logout + ActivationActivity
  *  - network error              -> fail CLOSED (Retry/Logout, never "Later")
  */
 public final class AccessGate {
@@ -65,7 +65,7 @@ public final class AccessGate {
         ApiClient.Resp r = ApiClient.get(ctx, "/api/access/status", true);
         if (r.code == 401) {
             return new Result(false, "SESSION_EXPIRED",
-                    "Session expired. Please login again.", "", "", r.code);
+                    "Session expired. Please reactivate.", "", "", r.code);
         }
         if (!r.ok()) {
             JSONObject access = r.json.optJSONObject("access");
@@ -94,7 +94,7 @@ public final class AccessGate {
                 access.optString("packageExpireDate", ""), httpCode);
     }
 
-    /** Parse the `access` object bundled in login/register responses. */
+    /** Parse the `access` object bundled in auth (login/register/device) responses. */
     public static Result fromAuthResponse(JSONObject resp) {
         JSONObject access = resp == null ? null : resp.optJSONObject("access");
         if (access == null) {
