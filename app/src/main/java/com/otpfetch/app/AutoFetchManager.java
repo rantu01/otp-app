@@ -24,9 +24,10 @@ public final class AutoFetchManager {
 
     private static final String TAG = "AutoFetch";
     // Data-saver: longer debounce avoids a Graph fetch per keystroke;
-    // longer TTL stops re-fetch loops when both UIs echo the same line.
+    // longer TTL stops re-fetch loops when both UIs echo the same line and
+    // when popup open + text watcher fire for the same account.
     private static final long DEBOUNCE_MS = 1500;
-    private static final long REFIRE_TTL_MS = 60_000;
+    private static final long REFIRE_TTL_MS = 120_000;
 
     public interface StatusListener {
         void onAutoFetchStarted(String email);
@@ -50,6 +51,31 @@ public final class AutoFetchManager {
 
     public static void removeStatusListener(StatusListener l) {
         if (l != null) listeners.remove(l);
+    }
+
+    /**
+     * Clear-button support: drop any debounced fetch waiting to fire.
+     * Call with the cleared email's context before/after clearing prefs.
+     */
+    public static synchronized void cancelPending() {
+        try {
+            if (pending != null) handler.removeCallbacks(pending);
+        } catch (Exception ignored) {}
+        pending = null;
+    }
+
+    /**
+     * Data-saver: mark a manual GET CODE fetch so a debounced auto-fetch for
+     * the same account line doesn't fire a duplicate Graph burst right after.
+     */
+    public static synchronized void noteManualFetch(String data) {
+        try {
+            if (data == null) return;
+            String snapshot = data.trim();
+            if (snapshot.isEmpty()) return;
+            lastFiredData = snapshot;
+            lastFiredAt = System.currentTimeMillis();
+        } catch (Exception ignored) {}
     }
 
     /** Call from either UI's text watcher (user edits only, not synced echoes). */

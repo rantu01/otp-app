@@ -66,10 +66,18 @@ public class OtpServer {
     private static final long TOKEN_SAFETY_MARGIN_MS = 300_000;
     private static final int SEEN_LIMIT = 50;
     // Data-saver: the original 250 ms poller re-downloaded inbox+junk ~4x/sec.
-    // 5 s keeps re-sent OTPs arriving promptly while cutting mobile data ~20x.
-    private static final int POLL_INTERVAL_MS = 5000;
-    private static final int MAX_RETRIES = 12;
-    private static final int RETRY_BASE_DELAY_MS = 1000;
+    // 10 s keeps re-sent OTPs arriving promptly while halving mobile data vs
+    // 5 s (late OTPs are still caught by the poller after the fetch burst).
+    private static final int POLL_INTERVAL_MS = 10_000;
+    // Data-saver: 6 short retries (~15 s burst) instead of 12 (~40 s). Late
+    // OTPs are still auto-detected by the background poller, so the burst
+    // doesn't need to cover the full wait.
+    private static final int MAX_RETRIES = 6;
+    private static final int RETRY_BASE_DELAY_MS = 1500;
+    private static final int RETRY_MAX_DELAY_MS = 4000;
+    // Data-saver: drop watched accounts idle this long so an app left open
+    // overnight stops polling Graph forever. Any new fetch re-watches.
+    private static final long WATCH_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
     public interface LogListener {
         void onLog(String line);
@@ -101,6 +109,10 @@ public class OtpServer {
     private final Map<String, OtpEntry> otpCache = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> seenMessages = new ConcurrentHashMap<>();
     private final Map<String, OtpHelper.Account> watchedAccounts = new ConcurrentHashMap<>();
+    // Last activity per watched key (fetch / poll hit / notify). Used to
+    // expire idle watches so background polling stops when the app is left
+    // open but unused.
+    private final Map<String, Long> watchTouch = new ConcurrentHashMap<>();
 
     private volatile boolean running = false;
     private ServerSocket serverSocket;
@@ -135,6 +147,62 @@ public class OtpServer {
     public void setLogListener(LogListener l) { this.logListener = l; }
     public boolean isRunning() { return running; }
     public int watchedCount() { return watchedAccounts.size(); }
+
+    /**
+     * Clear-button support: stop watching an email so no old or newly
+     * received OTP from it keeps appearing. Removes the account from the
+     * background poller plus its token/OTP/seen caches and last-notified
+     * marker. Case-insensitive (watched keys keep original casing).
+     * No-op for null/empty input.
+     */
+    public void clearAccount(String email) {
+        if (email == null) return;
+        String needle = email.trim();
+        if (needle.isEmpty()) return;
+        try {
+            for (String key : new ArrayList<>(watchedAccounts.keySet())) {
+                if (key != null && key.equalsIgnoreCase(needle)) {
+                    watchedAccounts.remove(key);
+                }
+            }
+            for (String key : new ArrayList<>(tokenCache.keySet())) {
+                if (key != null && key.equalsIgnoreCase(needle)) {
+                    tokenCache.remove(key);
+                }
+            }
+            for (String key : new ArrayList<>(otpCache.keySet())) {
+                if (key != null && key.equalsIgnoreCase(needle)) {
+                    otpCache.remove(key);
+                }
+            }
+            for (String key : new ArrayList<>(seenMessages.keySet())) {
+                if (key != null && key.equalsIgnoreCase(needle)) {
+                    seenMessages.remove(key);
+                }
+            }
+            for (String key : new ArrayList<>(lastNotifiedCode.keySet())) {
+                if (key != null && key.equalsIgnoreCase(needle)) {
+                    lastNotifiedCode.remove(key);
+                }
+            }
+            for (String key : new ArrayList<>(watchTouch.keySet())) {
+                if (key != null && key.equalsIgnoreCase(needle)) {
+                    watchTouch.remove(key);
+                }
+            }
+        } catch (Exception ignored) {}
+        log("Cleared " + needle);
+    }
+
+    /** True when the email is still watched (used to abort stale fetches). */
+    public boolean isWatched(String email) {
+        if (email == null || email.trim().isEmpty()) return false;
+        String needle = email.trim();
+        for (String key : watchedAccounts.keySet()) {
+            if (key != null && key.equalsIgnoreCase(needle)) return true;
+        }
+        return false;
+    }
 
     private void log(String s) {
         Log.i(TAG, s);
@@ -182,17 +250,35 @@ public class OtpServer {
 
     // ================= background poller =================
 
+    private void touchWatch(String email) {
+        if (email == null || email.isEmpty()) return;
+        try { watchTouch.put(email, System.currentTimeMillis()); } catch (Exception ignored) {}
+    }
+
     private void startPoller() {
         if (poller != null) return;
         poller = Executors.newSingleThreadScheduledExecutor();
         poller.scheduleWithFixedDelay(() -> {
             try {
                 if (watchedAccounts.isEmpty()) return;
+                // Data-saver: expire watches idle past the timeout so an app
+                // left open stops downloading inbox+junk forever.
+                try {
+                    long now = System.currentTimeMillis();
+                    for (String key : new ArrayList<>(watchedAccounts.keySet())) {
+                        Long t = watchTouch.get(key);
+                        if (t != null && now - t > WATCH_IDLE_TIMEOUT_MS) {
+                            try { clearAccount(key); } catch (Exception ignored) {}
+                        }
+                    }
+                    if (watchedAccounts.isEmpty()) return;
+                } catch (Exception ignored) {}
                 List<Future<?>> futures = new ArrayList<>();
                 ExecutorService exec = clientPool;
                 if (exec == null) return;
                 for (String email : watchedAccounts.keySet()) {
-                    futures.add(exec.submit(() -> { pollAccount(email); return null; }));
+                    final String target = email;
+                    futures.add(exec.submit(() -> { pollAccount(target); return null; }));
                 }
                 for (Future<?> f : futures) {
                     try { f.get(6, TimeUnit.SECONDS); } catch (Exception ignored) {}
@@ -206,10 +292,11 @@ public class OtpServer {
         if (acc == null) return null;
         try {
             String token = getAccessTokenForAccount(acc);
-            if (token == null) { watchedAccounts.remove(email); return null; }
+            if (token == null) { watchedAccounts.remove(email); watchTouch.remove(email); return null; }
             List<GraphMsg> messages = fetchInboxAndJunk(token);
             OtpEntry result = tryExtractOTP(messages, email);
             if (result != null) {
+                touchWatch(email);
                 notifyNewOtp(email, result.code);
             }
             return result;
@@ -589,11 +676,17 @@ public class OtpServer {
                 : (prev != null ? prev.refreshToken : "");
         OtpHelper.Account full = new OtpHelper.Account(email, tok, cid, pwd);
         watchedAccounts.put(email, full);
+        touchWatch(email);
 
         // NOTE: no instant cache return here. A stale cached 5-digit code
         // must never shadow a freshly arrived 6-digit code.
-        // Backoff: 1s, 1.5s, 2s ... caps total mobile data on slow inboxes.
+        // Backoff: short burst only; the poller covers late OTPs.
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            // Clear-button support: abort promptly when the email was cleared
+            // mid-fetch so no OTP from it is delivered after clearing.
+            if (!isWatched(email)) {
+                return new FetchResult(false, null, "Cleared.");
+            }
             String token = getAccessTokenForAccount(full);
             if (token == null) {
                 return new FetchResult(false, null, "Token refresh failed. Refresh Token might be dead.");
@@ -601,14 +694,22 @@ public class OtpServer {
             List<GraphMsg> messages = fetchInboxAndJunk(token);
             OtpEntry result = tryExtractOTP(messages, email);
             if (result != null) {
+                // Re-check: cleared while the Graph round-trip was in flight.
+                if (!isWatched(email)) {
+                    return new FetchResult(false, null, "Cleared.");
+                }
                 notifyNewOtp(email, result.code);
                 return new FetchResult(true, result.code, null);
             }
             if (attempt < MAX_RETRIES) {
-                try { Thread.sleep(Math.min(5000, RETRY_BASE_DELAY_MS + attempt * 500)); } catch (InterruptedException e) { break; }
+                try { Thread.sleep(Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS + attempt * 500)); } catch (InterruptedException e) { break; }
             }
         }
         // Last resort: recent cache (covers "already shown" re-taps).
+        // Cleared accounts never fall back to cache.
+        if (!isWatched(email)) {
+            return new FetchResult(false, null, "Cleared.");
+        }
         OtpEntry c = otpCache.get(email);
         if (c != null && System.currentTimeMillis() - c.ts < OTP_CACHE_TTL_MS) {
             notifyNewOtp(email, c.code);
@@ -622,6 +723,7 @@ public class OtpServer {
 
     private void notifyNewOtp(String email, String code) {
         if (email == null || code == null || code.isEmpty()) return;
+        touchWatch(email);
         String last = lastNotifiedCode.get(email);
         boolean isNew = !code.equals(last);
         if (isNew) lastNotifiedCode.put(email, code);

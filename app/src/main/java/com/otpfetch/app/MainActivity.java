@@ -335,7 +335,9 @@ public class MainActivity extends AppCompatActivity {
             String current = "";
             try { current = OtpHelper.extractEmail(accountDataInput.getText().toString()); }
             catch (Exception ignored) {}
-            if (!current.isEmpty() && !current.equalsIgnoreCase(email)) return;
+            // Cleared (empty) input must never display OTPs from any email.
+            if (current.isEmpty()) return;
+            if (!current.equalsIgnoreCase(email)) return;
             otpCode.setText(code);
             resultContainer.setVisibility(View.VISIBLE);
             // Copy + auto-open already ran centrally in OtpServer; just report it here.
@@ -656,11 +658,24 @@ public class MainActivity extends AppCompatActivity {
         });
 
         clearBtn.setOnClickListener(v -> {
+            // Capture the email BEFORE wiping the input so its background
+            // polling + caches can be stopped as well.
+            String clearedEmail = "";
+            try { clearedEmail = OtpHelper.extractEmail(accountDataInput.getText().toString()); }
+            catch (Exception ignored) {}
+            AutoFetchManager.cancelPending();
+            if (!clearedEmail.isEmpty()) {
+                try { OtpServer.getInstance().clearAccount(clearedEmail); } catch (Exception ignored) {}
+            }
+            try { OtpAutoActions.clearLastOtp(MainActivity.this, clearedEmail); } catch (Exception ignored) {}
+            try { FloatingService.updateCode(""); } catch (Exception ignored) {}
             accountDataInput.setText("");
             prefs.edit().remove(KEY_SAVED).apply();
             emailContainer.setVisibility(View.GONE);
             resultContainer.setVisibility(View.GONE);
+            try { otpCode.setText(""); } catch (Exception ignored) {}
             statusDiv.setText("");
+            showStatus("Cleared" + (clearedEmail.isEmpty() ? "" : " " + clearedEmail), false);
         });
     }
 
@@ -704,6 +719,12 @@ public class MainActivity extends AppCompatActivity {
             }
             refreshServerUi();
         }
+
+        // Data-saver: a debounced auto-fetch for this same line may be queued
+        // from the text watcher — drop it and mark the manual fetch so the
+        // auto path doesn't fire a duplicate Graph burst right after.
+        AutoFetchManager.cancelPending();
+        AutoFetchManager.noteManualFetch(data);
 
         showStatus("Loading...", false);
         resultContainer.setVisibility(View.GONE);

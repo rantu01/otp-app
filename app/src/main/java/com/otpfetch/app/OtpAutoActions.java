@@ -135,6 +135,26 @@ public final class OtpAutoActions {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * Clear-button support: drop the persisted last-OTP so a cleared email's
+     * old code never re-appears on reopen. When email is null/empty clears
+     * unconditionally; otherwise only clears when the stored email matches
+     * (case-insensitive).
+     */
+    public static void clearLastOtp(Context ctx, String email) {
+        try {
+            SharedPreferences p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            if (email != null && !email.trim().isEmpty()) {
+                String stored = p.getString(KEY_LAST_EMAIL, "");
+                if (stored != null && !stored.isEmpty()
+                        && !stored.equalsIgnoreCase(email.trim())) {
+                    return;
+                }
+            }
+            p.edit().remove(KEY_LAST_EMAIL).remove(KEY_LAST_CODE).apply();
+        } catch (Exception ignored) {}
+    }
+
     public static String getGenName(Context ctx) {
         try {
             return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

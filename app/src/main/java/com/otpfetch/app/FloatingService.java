@@ -223,6 +223,15 @@ public class FloatingService extends Service {
 
     /** Re-sent OTPs update the open popup in place; only the selected app auto-opens. */
     private void onAutoOtp(String email, String code) {
+        try {
+            // Cleared (empty) popup input must never display OTPs from any email.
+            String current = "";
+            try {
+                if (pAccount != null) current = OtpHelper.extractEmail(pAccount.getText().toString());
+            } catch (Exception ignored) {}
+            if (current.isEmpty()) return;
+            if (!current.equalsIgnoreCase(email)) return;
+        } catch (Exception ignored) {}
         updateCode(code);
         try {
             if (popupView == null) return;
@@ -470,10 +479,23 @@ public class FloatingService extends Service {
         pClear = actionButton("Clear");
         tint(pClear, R.color.danger);
         pClear.setOnClickListener(v -> {
+            String clearedEmail = "";
+            try {
+                if (pAccount != null) clearedEmail = OtpHelper.extractEmail(pAccount.getText().toString());
+            } catch (Exception ignored) {}
+            AutoFetchManager.cancelPending();
+            if (!clearedEmail.isEmpty()) {
+                try { OtpServer.getInstance().clearAccount(clearedEmail); } catch (Exception ignored) {}
+            }
+            try { OtpAutoActions.clearLastOtp(FloatingService.this, clearedEmail); } catch (Exception ignored) {}
+            updateCode("");
+            try {
+                if (bubbleText != null) bubbleText.setText("OTP");
+            } catch (Exception ignored) {}
             pAccount.setText("");
             prefs.edit().remove(KEY_SAVED).apply();
             refreshPopupEmail("");
-            pStatus.setText("");
+            pStatus.setText(clearedEmail.isEmpty() ? "Cleared" : ("Cleared " + clearedEmail));
             pCode.setText("------");
         });
         body.addView(pClear);
@@ -747,6 +769,10 @@ public class FloatingService extends Service {
             }
             refreshPopupServerUi();
         }
+        // Data-saver: drop any queued auto-fetch for this line so manual +
+        // auto don't each run a Graph burst for the same account.
+        AutoFetchManager.cancelPending();
+        AutoFetchManager.noteManualFetch(data);
         popupStatus("Loading...", false);
         if (pGetCode != null) pGetCode.setEnabled(false);
         net.execute(() -> {
