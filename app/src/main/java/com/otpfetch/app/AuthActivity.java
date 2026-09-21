@@ -17,41 +17,42 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Credential Login / Register (DORMANT fallback, not in the UI flow).
- * The User App now opens on ActivationActivity (device activation) instead;
- * this screen is kept working but unlinked. Login / Register against the
- * shared backend, and — on every cold start with a saved session —
- * re-verifies backend access before routing anywhere:
+ * Credential Login / Register with username + password.
+ *
+ * Primary login screen alongside device activation: on every cold start with
+ * a saved session the backend access is re-verified before routing:
  *
  *   access OK              -> MainActivity (Home)
  *   PENDING / NO_PACKAGE   -> PackageActivity (purchase/approval flow only)
  *   anything else          -> stay here, fully locked out (no bypass)
  *   unreachable backend    -> blocking Retry (fail closed, never "Later")
  *
- * Also configures the API base URL.
+ * One device per account: if the backend reports the account is live on
+ * another device (HTTP 409 SESSION_IN_USE), the exact message is shown and
+ * the user must log out there first. Backend URL is centralized
+ * (see ApiConfig) — never entered manually.
  */
 public class AuthActivity extends AppCompatActivity {
 
     private final ExecutorService net = Executors.newSingleThreadExecutor();
-    private EditText serverInput, loginInput, nameInput, passInput;
+    private EditText loginInput, nameInput, passInput;
     private TextView hintView;
     private LinearLayout formBox;
+    private Button loginBtn, registerBtn;
     private boolean routing = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_auth);
-        serverInput = findViewById(R.id.serverInput);
         loginInput = findViewById(R.id.loginInput);
         nameInput = findViewById(R.id.nameInput);
         passInput = findViewById(R.id.passInput);
         hintView = findViewById(R.id.authHint);
         formBox = findViewById(R.id.authForm);
-        Button loginBtn = findViewById(R.id.loginBtn);
-        Button registerBtn = findViewById(R.id.registerBtn);
+        loginBtn = findViewById(R.id.loginBtn);
+        registerBtn = findViewById(R.id.registerBtn);
 
-        serverInput.setText(SessionManager.getBaseUrl(this));
         loginBtn.setOnClickListener(v -> doAuth(false));
         registerBtn.setOnClickListener(v -> doAuth(true));
 
@@ -81,11 +82,12 @@ public class AuthActivity extends AppCompatActivity {
             formBox.setVisibility(enabled ? View.VISIBLE : View.GONE);
         } else {
             int vis = enabled ? View.VISIBLE : View.GONE;
-            serverInput.setVisibility(vis);
             loginInput.setVisibility(vis);
             nameInput.setVisibility(vis);
             passInput.setVisibility(vis);
         }
+        if (loginBtn != null) loginBtn.setEnabled(enabled);
+        if (registerBtn != null) registerBtn.setEnabled(enabled);
     }
 
     /** Live server check -> route. Fail CLOSED when the backend is unreachable. */
@@ -157,20 +159,26 @@ public class AuthActivity extends AppCompatActivity {
     }
 
     private void doAuth(boolean register) {
-        String base = serverInput.getText().toString().trim();
         String login = loginInput.getText().toString().trim();
         String pass = passInput.getText().toString();
         String name = nameInput.getText().toString().trim();
-        if (base.isEmpty() || login.isEmpty() || pass.isEmpty()) {
-            toast("Server, login and password are required");
+        if (login.isEmpty() || pass.isEmpty()) {
+            toast("Username and password are required");
             return;
         }
-        SessionManager.setBaseUrl(this, base);
+        SessionManager.setBaseUrl(this, ApiConfig.DEFAULT_BASE_URL);
         hintView.setText(register ? "Creating account..." : "Logging in...");
+        Button active = register ? registerBtn : loginBtn;
+        Button other = register ? loginBtn : registerBtn;
+        UiBusy.setBusy(active, register ? "Creating..." : "Logging in...");
+        if (other != null) other.setEnabled(false);
         net.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("password", pass);
+                // Bind this login to the device so one account cannot be live
+                // on two devices at once (backend enforces single session).
+                body.put("deviceId", currentDeviceId());
                 JSONObject resp;
                 int code;
                 if (register) {
@@ -192,6 +200,8 @@ public class AuthActivity extends AppCompatActivity {
                 JSONObject user = resp.optJSONObject("user");
                 if (user != null && "admin".equals(user.optString("role"))) {
                     runOnUiThread(() -> {
+                        UiBusy.setIdle(loginBtn, "Login");
+                        UiBusy.setIdle(registerBtn, "Create Account");
                         hintView.setText("This account is an admin. Please use the Admin App.");
                         toast("Admins cannot log into the User App");
                     });
@@ -200,6 +210,8 @@ public class AuthActivity extends AppCompatActivity {
                 SessionManager.saveLogin(this, resp.optString("token", ""), user);
                 final JSONObject respFinal = resp;
                 runOnUiThread(() -> {
+                    UiBusy.setIdle(loginBtn, "Login");
+                    UiBusy.setIdle(registerBtn, "Create Account");
                     // Freshly-issued auth response already carries access state.
                     AccessGate.Result r = AccessGate.fromAuthResponse(respFinal);
                     if (r.allowed) {
@@ -209,6 +221,8 @@ public class AuthActivity extends AppCompatActivity {
                 });
             } catch (AuthFailed e) {
                 runOnUiThread(() -> {
+                    UiBusy.setIdle(loginBtn, "Login");
+                    UiBusy.setIdle(registerBtn, "Create Account");
                     // 403 = backend account gate (pending/disabled/blocked):
                     // show the reason, keep any saved session for re-checks.
                     hintView.setText(e.getMessage());
@@ -216,6 +230,8 @@ public class AuthActivity extends AppCompatActivity {
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
+                    UiBusy.setIdle(loginBtn, "Login");
+                    UiBusy.setIdle(registerBtn, "Create Account");
                     hintView.setText("Error: " + e.getMessage());
                     toast("Failed: " + e.getMessage());
                 });
@@ -229,6 +245,20 @@ public class AuthActivity extends AppCompatActivity {
             super(msg);
             this.code = code;
         }
+    }
+
+    /** Stable per-device identity for single-session enforcement. */
+    private String currentDeviceId() {
+        String saved = SessionManager.getDeviceId(this);
+        if (saved != null && !saved.isEmpty()) return saved;
+        try {
+            String androidId = android.provider.Settings.Secure.getString(
+                    getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+            if (androidId != null && androidId.matches("(?i)[a-f0-9]{6,64}")) {
+                return androidId.toLowerCase();
+            }
+        } catch (Exception ignored) {}
+        return SessionManager.getOrCreateFallbackDeviceId(this);
     }
 
     private void toast(String m) {

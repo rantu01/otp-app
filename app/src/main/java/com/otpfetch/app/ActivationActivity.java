@@ -38,9 +38,9 @@ public class ActivationActivity extends AppCompatActivity {
 
     private final ExecutorService net = Executors.newSingleThreadExecutor();
     private TextView deviceIdText;
-    private EditText deviceInput, serverInput;
+    private EditText deviceInput;
     private TextView hintView;
-    private Button nextBtn, exitBtn;
+    private Button nextBtn, exitBtn, loginBtn;
     private String detectedId = "";
     private boolean routing = false;
 
@@ -50,17 +50,15 @@ public class ActivationActivity extends AppCompatActivity {
         setContentView(R.layout.activity_activation);
         deviceIdText = findViewById(R.id.deviceIdText);
         deviceInput = findViewById(R.id.deviceInput);
-        serverInput = findViewById(R.id.serverInput);
         hintView = findViewById(R.id.actHint);
         nextBtn = findViewById(R.id.nextBtn);
         exitBtn = findViewById(R.id.exitBtn);
+        loginBtn = findViewById(R.id.loginBtn);
 
         detectedId = detectDeviceId();
         deviceIdText.setText(detectedId);
         String saved = SessionManager.getDeviceId(this);
         deviceInput.setText(saved.isEmpty() ? detectedId : saved);
-        // Backend host (emulator default; real devices need the PC's LAN IP).
-        serverInput.setText(SessionManager.getBaseUrl(this));
 
         deviceIdText.setOnClickListener(v -> {
             copyToClipboard(deviceIdText.getText().toString());
@@ -68,6 +66,10 @@ public class ActivationActivity extends AppCompatActivity {
         });
         nextBtn.setOnClickListener(v -> doNext());
         exitBtn.setOnClickListener(v -> finishAffinity());
+        if (loginBtn != null) {
+            loginBtn.setOnClickListener(v ->
+                    startActivity(new Intent(this, AuthActivity.class)));
+        }
 
         // Returning session? Verify server-side, then route. Otherwise the
         // activation form above is the first-run experience.
@@ -97,16 +99,10 @@ public class ActivationActivity extends AppCompatActivity {
             toast("Invalid Device ID");
             return;
         }
-        String base = serverInput.getText().toString().trim();
-        if (base.isEmpty()) {
-            hintView.setText("Server URL is required.");
-            toast("Server URL is required");
-            return;
-        }
-        SessionManager.setBaseUrl(this, base);
+        SessionManager.setBaseUrl(this, ApiConfig.DEFAULT_BASE_URL);
         SessionManager.setDeviceId(this, norm);
         hintView.setText("Activating...");
-        nextBtn.setEnabled(false);
+        UiBusy.setBusy(nextBtn, "Loading...");
         net.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
@@ -115,7 +111,7 @@ public class ActivationActivity extends AppCompatActivity {
                 if (!r.ok()) {
                     final String err = r.json.optString("error", "Activation failed");
                     runOnUiThread(() -> {
-                        nextBtn.setEnabled(true);
+                        UiBusy.setIdle(nextBtn, "next");
                         hintView.setText(err);
                         toast(err);
                     });
@@ -125,12 +121,12 @@ public class ActivationActivity extends AppCompatActivity {
                 SessionManager.saveLogin(this, r.json.optString("token", ""), user);
                 final JSONObject respFinal = r.json;
                 runOnUiThread(() -> {
-                    nextBtn.setEnabled(true);
+                    UiBusy.setIdle(nextBtn, "next");
                     routeByAccess(AccessGate.fromAuthResponse(respFinal));
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    nextBtn.setEnabled(true);
+                    UiBusy.setIdle(nextBtn, "next");
                     hintView.setText("Error: " + e.getMessage());
                     toast("Failed: " + e.getMessage());
                 });
@@ -143,7 +139,7 @@ public class ActivationActivity extends AppCompatActivity {
         if (routing) return;
         routing = true;
         hintView.setText("Verifying access...");
-        nextBtn.setEnabled(false);
+        UiBusy.setBusy(nextBtn, "Loading...");
         net.execute(() -> {
             try {
                 AccessGate.Result r = AccessGate.check(this);
@@ -156,7 +152,7 @@ public class ActivationActivity extends AppCompatActivity {
 
     private void routeByAccess(AccessGate.Result r) {
         routing = false;
-        nextBtn.setEnabled(true);
+        UiBusy.setIdle(nextBtn, "next");
         if (r.allowed) {
             startActivity(new Intent(this, MainActivity.class));
             finish();
@@ -194,7 +190,7 @@ public class ActivationActivity extends AppCompatActivity {
                     routing = false;
                     if (SessionManager.isLoggedIn(this)) verifyAndRoute();
                     else {
-                        nextBtn.setEnabled(true);
+                        UiBusy.setIdle(nextBtn, "next");
                         hintView.setText("");
                     }
                 })

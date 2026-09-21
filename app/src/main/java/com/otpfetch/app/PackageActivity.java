@@ -61,12 +61,16 @@ public class PackageActivity extends AppCompatActivity {
         submitBtn = findViewById(R.id.submitBtn);
         refreshBtn = findViewById(R.id.pkgRefreshBtn);
         submitBtn.setOnClickListener(v -> submitPayment());
-        refreshBtn.setOnClickListener(v -> loadAll());
+        refreshBtn.setOnClickListener(v -> {
+            UiBusy.setBusy(refreshBtn, "Loading...");
+            loadAll();
+        });
         loadAll();
     }
 
     private void loadAll() {
         statusView.setText("Loading packages...");
+        if (refreshBtn != null && refreshBtn.isEnabled()) UiBusy.setBusy(refreshBtn, "Loading...");
         net.execute(() -> {
             try {
                 // Live server gate: blocked accounts are bounced to Auth.
@@ -117,6 +121,7 @@ public class PackageActivity extends AppCompatActivity {
                 catch (Exception e) { throw new RuntimeException(e); }
                 final String currentLine = currentPackageLine(current);
                 runOnUiThread(() -> {
+                    UiBusy.setIdle(refreshBtn);
                     renderPackages();
                     renderMethods();
                     renderMine(my == null ? new JSONArray() : my);
@@ -133,7 +138,10 @@ public class PackageActivity extends AppCompatActivity {
                     }
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> statusView.setText("Offline: " + e.getMessage() + " — tap Refresh to retry."));
+                runOnUiThread(() -> {
+                    UiBusy.setIdle(refreshBtn);
+                    statusView.setText("Offline: " + e.getMessage() + " — tap Refresh to retry.");
+                });
             }
         });
     }
@@ -250,6 +258,9 @@ public class PackageActivity extends AppCompatActivity {
             if ("REJECTED".equals(o.optString("status")) && !o.optString("rejectionReason", "").isEmpty()) {
                 s += "\nReason: " + o.optString("rejectionReason");
             }
+            if (!o.optString("verifyNote", "").isEmpty()) {
+                s += "\nNote: " + o.optString("verifyNote");
+            }
             s += "\nTxID: " + o.optString("transactionId");
             t.setText(s);
             t.setPadding(12, 12, 12, 12);
@@ -279,6 +290,7 @@ public class PackageActivity extends AppCompatActivity {
             return;
         }
         submitBtn.setEnabled(false);
+        UiBusy.setBusy(submitBtn, "Submitting...");
         statusView.setText("Submitting...");
         net.execute(() -> {
             try {
@@ -288,7 +300,7 @@ public class PackageActivity extends AppCompatActivity {
                 body.put("transactionId", txid);
                 ApiClient.Resp r = ApiClient.postIdempotent(this, "/api/payments", body, true);
                 runOnUiThread(() -> {
-                    submitBtn.setEnabled(true);
+                    UiBusy.setIdle(submitBtn);
                     if (r.code == 401) {
                         bounceToActivation("Session expired. Please reactivate.");
                         return;
@@ -298,9 +310,16 @@ public class PackageActivity extends AppCompatActivity {
                         return;
                     }
                     if (r.ok()) {
-                        statusView.setText("Payment Status: Pending — admin will verify shortly.");
+                        String note = r.json.optString("verifyNote", "");
+                        if (note.contains("Amount mismatch")) {
+                            statusView.setText("Amount mismatch — " + note);
+                        } else if (r.json.optBoolean("autoVerified", false)) {
+                            statusView.setText("Payment verified automatically.");
+                        } else {
+                            statusView.setText("Payment Status: Pending — admin will verify shortly.");
+                        }
                         txidInput.setText("");
-                        Toast.makeText(this, "Submitted. Status: PENDING", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Submitted. Status: " + r.json.optString("status", "PENDING"), Toast.LENGTH_SHORT).show();
                         loadAll();
                     } else {
                         statusView.setText(r.json.optString("error", "Submit failed"));
@@ -309,7 +328,7 @@ public class PackageActivity extends AppCompatActivity {
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    submitBtn.setEnabled(true);
+                    UiBusy.setIdle(submitBtn);
                     statusView.setText("Offline: " + e.getMessage());
                 });
             }

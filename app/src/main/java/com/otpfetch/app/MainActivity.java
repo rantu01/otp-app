@@ -130,6 +130,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int NAV_MENU = 4;
     private static final int DRAWER_TITLE = 101;
     private static final int DRAWER_ACCOUNT = 102;
+    private static final int DRAWER_PROFILE = 108;
     private static final int DRAWER_SERVER = 103;
     private static final int DRAWER_FLOATING = 104;
     private static final int DRAWER_UPDATES = 105;
@@ -226,6 +227,13 @@ public class MainActivity extends AppCompatActivity {
     private void onSharedStateChanged(String key) {
         if (key == null) return;
         try {
+            if (FloatingService.KEY_FLOATING_STATE.equals(key)) {
+                // Widget transitioned (start/stop is async): re-sync the
+                // toggle text from the live service status so the UI can
+                // never stick on a stale ON/OFF value.
+                refreshServerUi();
+                return;
+            }
             if (OtpAutoActions.KEY_SAVED.equals(key)) {
                 String saved = prefs.getString(KEY_SAVED, "");
                 if (!saved.equals(accountDataInput.getText().toString())) {
@@ -420,15 +428,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startServer() {
+        UiBusy.setBusy(serverToggleBtn, "Starting...");
         net.execute(() -> {
             try {
                 OtpServer.getInstance().start();
                 main.post(() -> {
+                    UiBusy.setIdle(serverToggleBtn);
                     toast("Started");
                     refreshServerUi();
                 });
             } catch (Exception e) {
                 main.post(() -> {
+                    UiBusy.setIdle(serverToggleBtn);
                     toast("Failed: " + e.getMessage());
                     refreshServerUi();
                 });
@@ -437,9 +448,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void stopServer() {
+        UiBusy.setBusy(serverToggleBtn, "Stopping...");
         net.execute(() -> {
             OtpServer.getInstance().stop();
             main.post(() -> {
+                UiBusy.setIdle(serverToggleBtn);
                 toast("Stopped");
                 refreshServerUi();
             });
@@ -447,13 +460,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshServerUi() {
-        boolean running = OtpServer.getInstance().isRunning();
-        serverStatus.setText(running
+        // Authoritative UI sync: every label ALWAYS mirrors the live service
+        // status (never a cached flag), so ON->OFF->ON transitions can never
+        // leave a stale value behind.
+        boolean serverRunning = OtpServer.getInstance().isRunning();
+        boolean floatingOn = FloatingService.isRunning();
+        serverStatus.setText(serverRunning
                 ? "● Running :3000 (" + OtpServer.getInstance().watchedCount() + ")"
                 : "○ Stopped");
-        serverStatus.setTextColor(ContextCompat.getColor(this, running ? R.color.success : R.color.error));
-        serverToggleBtn.setText(running ? "Stop" : "Start");
-        floatingBtn.setText(FloatingService.isRunning() ? "Floating: ON" : "Floating: OFF");
+        serverStatus.setTextColor(ContextCompat.getColor(this, serverRunning ? R.color.success : R.color.error));
+        serverToggleBtn.setText(serverRunning ? "Stop" : "Start");
+        floatingBtn.setText(floatingOn ? "Floating: ON" : "Floating: OFF");
         refreshDrawerTitles();
     }
 
@@ -496,9 +513,22 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** Opens the Packages screen. Used by the access bar, bottom bar and drawer. */
-    private void openPackages() {
+    /** Opens the Profile screen (password change; username never editable). */
+    private void openProfile() {
         try {
+            if (isFinishing() || isDestroyed()) return;
+            if (!SessionManager.isLoggedIn(this)) {
+                startActivity(new Intent(this, AuthActivity.class));
+                return;
+            }
+            startActivity(new Intent(this, ProfileActivity.class));
+        } catch (Exception e) {
+            try { toast("Profile unavailable: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    /** Opens the Packages screen. Used by the access bar, bottom bar and drawer. */
+    private void openPackages() {        try {
             if (isFinishing() || isDestroyed()) return;
             if (!SessionManager.isLoggedIn(this)) {
                 startActivity(new Intent(this, ActivationActivity.class));
@@ -562,15 +592,17 @@ public class MainActivity extends AppCompatActivity {
                     "Rantu_OTP v" + ApiClient.appVersion(this)).setEnabled(false);
             dm.add(Menu.NONE, DRAWER_ACCOUNT, 1, "Account")
                     .setIcon(android.R.drawable.ic_menu_manage);
-            dm.add(Menu.NONE, DRAWER_SERVER, 2, "Start Server")
+            dm.add(Menu.NONE, DRAWER_PROFILE, 2, "Profile")
+                    .setIcon(android.R.drawable.ic_menu_myplaces);
+            dm.add(Menu.NONE, DRAWER_SERVER, 3, "Start Server")
                     .setIcon(android.R.drawable.ic_menu_compass);
-            dm.add(Menu.NONE, DRAWER_FLOATING, 3, "Floating Widget")
+            dm.add(Menu.NONE, DRAWER_FLOATING, 4, "Floating Widget")
                     .setIcon(android.R.drawable.ic_menu_view);
-            dm.add(Menu.NONE, DRAWER_UPDATES, 4, "Check for Updates")
+            dm.add(Menu.NONE, DRAWER_UPDATES, 5, "Check for Updates")
                     .setIcon(android.R.drawable.ic_menu_info_details);
-            dm.add(Menu.NONE, DRAWER_PACKAGES, 5, "Packages")
+            dm.add(Menu.NONE, DRAWER_PACKAGES, 6, "Packages")
                     .setIcon(android.R.drawable.ic_menu_send);
-            dm.add(Menu.NONE, DRAWER_EXIT, 6, "Exit App")
+            dm.add(Menu.NONE, DRAWER_EXIT, 7, "Exit App")
                     .setIcon(android.R.drawable.ic_menu_close_clear_cancel);
             drawerServerItem = dm.findItem(DRAWER_SERVER);
             drawerFloatingItem = dm.findItem(DRAWER_FLOATING);
@@ -578,6 +610,7 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     int id = item.getItemId();
                     if (id == DRAWER_ACCOUNT && accountBtn != null) accountBtn.performClick();
+                    else if (id == DRAWER_PROFILE) openProfile();
                     else if (id == DRAWER_SERVER && serverToggleBtn != null) serverToggleBtn.performClick();
                     else if (id == DRAWER_FLOATING && floatingBtn != null) floatingBtn.performClick();
                     else if (id == DRAWER_UPDATES) checkForUpdatesManual();
@@ -728,7 +761,7 @@ public class MainActivity extends AppCompatActivity {
 
         showStatus("Loading...", false);
         resultContainer.setVisibility(View.GONE);
-        getCodeBtn.setEnabled(false);
+        UiBusy.setBusy(getCodeBtn, "Loading...");
 
         // Go through HTTP (http://127.0.0.1:3000/get-otp) exactly like the extension
         // talks to http://localhost:3000/get-otp — proves the embedded server works
@@ -743,33 +776,33 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     fresh = AccessGate.check(MainActivity.this);
                 } catch (Exception e) {
-                    accessAllowed = false;
-                    accessReason = "OFFLINE";
+                accessAllowed = false;
+                accessReason = "OFFLINE";
+                main.post(() -> {
+                    UiBusy.setIdle(getCodeBtn);
+                    showOfflineBlock();
+                });
+                return;
+            }
+            accessAllowed = fresh.allowed;
+            accessReason = fresh.reason;
+            if (!fresh.allowed) {
+                if (fresh.needsPackage()) {
                     main.post(() -> {
-                        getCodeBtn.setEnabled(true);
-                        showOfflineBlock();
+                        UiBusy.setIdle(getCodeBtn);
+                        showStatus("No active package — opening Packages", true);
+                        openPackages();
                     });
-                    return;
+                } else {
+                    final String msg = fresh.message.isEmpty() ? "Access denied." : fresh.message;
+                    main.post(() -> {
+                        UiBusy.setIdle(getCodeBtn);
+                        toast(msg);
+                        bounceTo(ActivationActivity.class, true);
+                    });
                 }
-                accessAllowed = fresh.allowed;
-                accessReason = fresh.reason;
-                if (!fresh.allowed) {
-                    if (fresh.needsPackage()) {
-                        main.post(() -> {
-                            getCodeBtn.setEnabled(true);
-                            showStatus("No active package — opening Packages", true);
-                            openPackages();
-                        });
-                    } else {
-                        final String msg = fresh.message.isEmpty() ? "Access denied." : fresh.message;
-                        main.post(() -> {
-                            getCodeBtn.setEnabled(true);
-                            toast(msg);
-                            bounceTo(ActivationActivity.class, true);
-                        });
-                    }
-                    return;
-                }
+                return;
+            }
                 URL url = new URL("http://127.0.0.1:3000/get-otp");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
@@ -799,9 +832,9 @@ public class MainActivity extends AppCompatActivity {
                 boolean ok = resp.optBoolean("success", false);
                 String code = resp.optString("code", "");
                 String err = resp.optString("error", "OTP Not Found");
-                main.post(() -> {
-                    getCodeBtn.setEnabled(true);
-                    if (ok) {
+            main.post(() -> {
+                UiBusy.setIdle(getCodeBtn);
+                if (ok) {
                         otpCode.setText(code);
                         resultContainer.setVisibility(View.VISIBLE);
                         showStatus("✓ Copied", false);
@@ -810,12 +843,12 @@ public class MainActivity extends AppCompatActivity {
                         showStatus(err, true);
                     }
                 });
-            } catch (Exception e) {
-                main.post(() -> {
-                    getCodeBtn.setEnabled(true);
-                    showStatus("Failed: " + e.getMessage(), true);
-                });
-            }
+        } catch (Exception e) {
+            main.post(() -> {
+                UiBusy.setIdle(getCodeBtn);
+                showStatus("Failed: " + e.getMessage(), true);
+            });
+        }
         });
     }
 
@@ -903,6 +936,7 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
                 genNameBtn.setEnabled(false);
+                UiBusy.setBusy(genNameBtn, "Loading...");
                 // Server-side kill-switch: re-verify on the backend before
                 // generating, so a revoked account is bounced immediately.
                 net.execute(() -> {
@@ -913,7 +947,7 @@ public class MainActivity extends AppCompatActivity {
                         accessAllowed = false;
                         accessReason = "OFFLINE";
                         main.post(() -> {
-                            genNameBtn.setEnabled(true);
+                            UiBusy.setIdle(genNameBtn);
                             showOfflineBlock();
                         });
                         return;
@@ -922,7 +956,7 @@ public class MainActivity extends AppCompatActivity {
                     accessReason = fresh.reason;
                     main.post(() -> {
                         try {
-                            genNameBtn.setEnabled(true);
+                            UiBusy.setIdle(genNameBtn);
                             if (!fresh.allowed) {
                                 if (fresh.needsPackage()) {
                                     toast("No active package — opening Packages");
@@ -940,12 +974,12 @@ public class MainActivity extends AppCompatActivity {
                         }
                     });
                 });
-            } catch (Exception e) {
-                try {
-                    genNameBtn.setEnabled(true);
-                    toast("Name error: " + e.getMessage());
-                } catch (Exception ignored) {}
-            }
+        } catch (Exception e) {
+            try {
+                UiBusy.setIdle(genNameBtn);
+                toast("Name error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
         });
             }
         if (firstNameView != null) {
@@ -1069,12 +1103,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showAppPickerDialog() {
-        toast("Loading...");
-        selectAppBtn.setEnabled(false);
+        UiBusy.setBusy(selectAppBtn, "Loading...");
         net.execute(() -> {
             final List<OtpAutoActions.AppEntry> apps = OtpAutoActions.getInstalledApps(this);
                 main.post(() -> {
-                    selectAppBtn.setEnabled(true);
+                    UiBusy.setIdle(selectAppBtn);
                     if (apps.isEmpty()) {
                         toast("None found");
                         return;
@@ -1116,8 +1149,18 @@ public class MainActivity extends AppCompatActivity {
     private void bindFloatingAndExit() {
         floatingBtn.setOnClickListener(v -> {
             if (FloatingService.isRunning()) {
-                stopService(new Intent(this, FloatingService.class));
+                UiBusy.setBusy(floatingBtn, "Turning off...");
+                try { stopService(new Intent(this, FloatingService.class)); }
+                catch (Exception ignored) {}
+                // stopService is async: sync now from live status, then again
+                // after onDestroy publishes OFF, so the label always lands on
+                // the real state instead of sticking at ON.
                 refreshServerUi();
+                main.postDelayed(() -> {
+                    UiBusy.setIdle(floatingBtn);
+                    refreshServerUi();
+                }, 600);
+                main.postDelayed(this::refreshServerUi, 1500);
             } else if (!accessAllowed) {
                 toast("Locked — access not approved");
                 enforceAccessGate();
@@ -1130,6 +1173,7 @@ public class MainActivity extends AppCompatActivity {
                     toast("Grant overlay, then retry");
                     return;
                 }
+                UiBusy.setBusy(floatingBtn, "Turning on...");
                 startFloatingService();
             }
         });
@@ -1145,7 +1189,12 @@ public class MainActivity extends AppCompatActivity {
             startService(i);
         }
         toast("Floating ON");
+        // Service start is async too: re-sync twice from live status.
         main.postDelayed(this::refreshServerUi, 500);
+        main.postDelayed(() -> {
+            UiBusy.setIdle(floatingBtn);
+            refreshServerUi();
+        }, 1200);
     }
 
     @Override
@@ -1183,9 +1232,8 @@ public class MainActivity extends AppCompatActivity {
                             .setMessage(info + "\nServer: " + SessionManager.getBaseUrl(this)
                                     + "\nAccess: " + accessReason)
                             .setPositiveButton("Refresh", (d, w) -> enforceAccessGate())
-                            .setNegativeButton("Logout", (d, w) -> {
-                                bounceTo(ActivationActivity.class, true);
-                            })
+                            .setNeutralButton("Profile", (d, w) -> openProfile())
+                            .setNegativeButton("Logout", (d, w) -> logoutEverywhere())
                             .show();
                 } else {
                     startActivity(new Intent(this, ActivationActivity.class));
@@ -1323,12 +1371,25 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
+     * Logout: tell the backend to clear the live session (frees the account
+     * for another device), then bounce out locally no matter what.
+     */
+    private void logoutEverywhere() {
+        toast("Logging out...");
+        net.execute(() -> {
+            try {
+                ApiClient.post(this, "/api/auth/logout", new JSONObject(), true);
+            } catch (Exception ignored) {}
+            main.post(() -> bounceTo(ActivationActivity.class, true));
+        });
+    }
+
+    /**
      * Hard bounce: stop every background surface (server + floating widget),
      * optionally clear the session, and clear the back stack so Back can never
      * return into Home.
      */
-    private void bounceTo(Class<?> target, boolean clearSession) {
-        if (isFinishing()) return;
+    private void bounceTo(Class<?> target, boolean clearSession) {        if (isFinishing()) return;
         accessAllowed = false;
         try { OtpServer.getInstance().stop(); } catch (Exception ignored) {}
         try { stopService(new Intent(this, FloatingService.class)); } catch (Exception ignored) {}

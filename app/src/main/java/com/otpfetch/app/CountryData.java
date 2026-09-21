@@ -151,6 +151,10 @@ public final class CountryData {
             new String[]{"Wei","Jun","Hao","Zhi","Kai","Ming","Chen","Jian","Zi","Hong","Leon","Marcus","Ryan","Ethan"},
             new String[]{"Mei","Jia","Xin","Yi","Hui","Li","An","Grace","Sarah","Chloe","Alyssa","Natalie","Vanessa","Jasmine"},
             new String[]{"Tan","Lim","Lee","Ng","Ong","Wong","Goh","Chan","Koh","Teo"}),
+        new Country("France", "outlook.fr",
+            new String[]{"Louis","Gabriel","Raphael","Jules","Adam","Lucas","Leo","Hugo","Arthur","Nathan","Ethan","Enzo","Mael","Noah","Eden","Liam","Marius","Gaspard","Victor","Paul","Antoine","Clement","Maxence","Theophile","Baptiste","Augustin","Felix","Emile","Henri","Valentin","Tristan","Eliott","Noe","Sacha","Martin","Rayan"},
+            new String[]{"Louise","Jade","Emma","Alice","Chloe","Mia","Lina","Lea","Anna","Julia","Elena","Rose","Juliette","Camille","Sarah","Ines","Eva","Lena","Manon","Margaux","Pauline","Victoire","Agathe","Eleonore","Constance","Blanche","Colette","Suzanne","Madeleine","Capucine","Apolline","Sixtine","Garance","Olympe","Zoe","Nina"},
+            new String[]{"Martin","Bernard","Thomas","Petit","Robert","Richard","Durand","Dubois","Moreau","Laurent","Simon","Michel","Lefebvre","Leroy","Roux","David","Bertrand","Morel","Fournier","Girard"}),
     };
 
     /** Display names for spinners, e.g. "Germany (@outlook.de)". */

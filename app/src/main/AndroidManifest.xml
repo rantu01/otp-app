@@ -51,6 +51,8 @@
 
         <activity android:name=".PackageActivity" android:exported="false" />
 
+        <activity android:name=".ProfileActivity" android:exported="false" />
+
         <service
             android:name=".FloatingService"
             android:exported="false"

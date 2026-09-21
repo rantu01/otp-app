@@ -92,6 +92,16 @@ public class FloatingService extends Service {
     private final Handler main = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
     /**
+     * Persisted floating state mirror: the single source of truth for whether
+     * the widget is live is {@link #isRunning()}, but the service lifecycle
+     * is asynchronous (stopService returns before onDestroy runs), so the UI
+     * also watches this key to re-sync after every transition instead of
+     * trusting a one-shot refresh.
+     */
+    public static final String KEY_FLOATING_STATE = "floating_state";
+    public static final String STATE_ON = "on";
+    public static final String STATE_OFF = "off";
+    /**
      * FAIL-CLOSED widget gate: popup OTP/server/name actions stay disabled
      * until the backend explicitly confirms access (verified on service start).
      * MainActivity stops this service outright whenever access is revoked.
@@ -114,6 +124,23 @@ public class FloatingService extends Service {
             (p, key) -> main.post(() -> onSharedStateChanged(key));
 
     public static boolean isRunning() { return instance != null; }
+
+    /** Last persisted widget state (mirror of the live service status). */
+    public static String persistedState(Context ctx) {
+        try {
+            return ctx.getApplicationContext()
+                    .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_FLOATING_STATE, STATE_OFF);
+        } catch (Exception e) {
+            return STATE_OFF;
+        }
+    }
+
+    private void publishState(String state) {
+        try {
+            prefs.edit().putString(KEY_FLOATING_STATE, state).apply();
+        } catch (Exception ignored) {}
+    }
 
     /** Called when a new OTP arrives (from MainActivity or the popup itself). */
     public static void updateCode(String code) {
@@ -145,6 +172,7 @@ public class FloatingService extends Service {
         createChannel();
         startForeground(NOTIF_ID, buildNotification());
         showBubble();
+        publishState(STATE_ON);
         verifyServiceAccess();
     }
 
@@ -774,12 +802,12 @@ public class FloatingService extends Service {
         AutoFetchManager.cancelPending();
         AutoFetchManager.noteManualFetch(data);
         popupStatus("Loading...", false);
-        if (pGetCode != null) pGetCode.setEnabled(false);
+        if (pGetCode != null) UiBusy.setBusy(pGetCode, "Loading...");
         net.execute(() -> {
             OtpServer.FetchResult r =
                     OtpServer.getInstance().fetchOtp(acc);
             main.post(() -> {
-                if (pGetCode != null) pGetCode.setEnabled(true);
+                if (pGetCode != null) UiBusy.setIdle(pGetCode);
                 if (r.success) {
                     updateCode(r.code);
                     popupStatus("✓ Copied", false);
@@ -893,6 +921,12 @@ public class FloatingService extends Service {
         bubbleText = null;
         windowManager = null;
         instance = null;
+        // Publish OFF *after* clearing the instance so any UI re-check that
+        // races this callback converges to OFF on the follow-up sync.
+        try {
+            getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .edit().putString(KEY_FLOATING_STATE, STATE_OFF).apply();
+        } catch (Exception ignored) {}
         super.onDestroy();
     }
 

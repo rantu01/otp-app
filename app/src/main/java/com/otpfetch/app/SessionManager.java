@@ -16,8 +16,8 @@ public final class SessionManager {
     private static final String KEY_BASE = "apiBaseUrl";
     private static final String KEY_DEVICE = "deviceId";
     private static final String KEY_DEVICE_FALLBACK = "deviceIdFallback";
-    /** Emulator loopback to host PC; real devices must set LAN IP in Auth screen. */
-    public static final String DEFAULT_BASE = "http://10.0.2.2:4000";
+    /** Central default backend URL (see ApiConfig — change it in one place). */
+    public static final String DEFAULT_BASE = ApiConfig.DEFAULT_BASE_URL;
 
     private SessionManager() {}
 
@@ -27,7 +27,15 @@ public final class SessionManager {
 
     public static String getBaseUrl(Context ctx) {
         String v = prefs(ctx).getString(KEY_BASE, DEFAULT_BASE);
-        return (v == null || v.isEmpty()) ? DEFAULT_BASE : v.replaceAll("/+$", "");
+        if (v == null || v.isEmpty()) return DEFAULT_BASE;
+        v = v.trim().replaceAll("/+$", "");
+        // Migrate stale manual entries (emulator loopback / LAN IPs users had
+        // to type in before the URL was centralized) to the central default.
+        if (v.contains("10.0.2.2") || v.contains("127.0.0.1") || v.contains("localhost")
+                || v.matches("https?://192\\.168\\..*") || v.matches("https?://10\\..*")) {
+            return DEFAULT_BASE;
+        }
+        return v;
     }
 
     public static void setBaseUrl(Context ctx, String url) {

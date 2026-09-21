@@ -64,6 +64,15 @@ public final class AccessGate {
     public static Result check(Context ctx) throws Exception {
         ApiClient.Resp r = ApiClient.get(ctx, "/api/access/status", true);
         if (r.code == 401) {
+            // Prefer the backend's explicit reason (e.g. SESSION_IN_USE when
+            // this account logged in on another device) over a generic one.
+            String code = r.json.optString("code", "");
+            String err = r.json.optString("error", "");
+            if ("SESSION_IN_USE".equals(code) || err.contains("another device")) {
+                return new Result(false, "SESSION_IN_USE",
+                        err.isEmpty() ? "This account is currently logged in on another device. Please log out from that device first, then log in here." : err,
+                        "", "", r.code);
+            }
             return new Result(false, "SESSION_EXPIRED",
                     "Session expired. Please reactivate.", "", "", r.code);
         }
