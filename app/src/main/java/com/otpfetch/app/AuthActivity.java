@@ -176,7 +176,7 @@ public class AuthActivity extends AppCompatActivity {
             try {
                 JSONObject body = new JSONObject();
                 body.put("password", pass);
-                // No deviceId — credential login only (device ID not used for auth).
+                body.put("deviceId", SessionManager.getOrCreateDeviceId(this));
                 JSONObject resp;
                 int code;
                 if (register) {

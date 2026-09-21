@@ -99,6 +99,7 @@ public class ActivationActivity extends AppCompatActivity {
                 JSONObject body = new JSONObject();
                 body.put("login", login);
                 body.put("password", pass);
+                body.put("deviceId", SessionManager.getOrCreateDeviceId(this));
                 ApiClient.Resp r = ApiClient.post(this, "/api/auth/login", body, false);
                 if (!r.ok()) throw new AuthFailed(r.code, r.json.optString("error", "Login failed"));
                 JSONObject user = r.json.optJSONObject("user");
@@ -152,6 +153,7 @@ public class ActivationActivity extends AppCompatActivity {
                 if (login.contains("@")) body.put("email", login);
                 else body.put("phone", login);
                 body.put("password", pass);
+                body.put("deviceId", SessionManager.getOrCreateDeviceId(this));
                 ApiClient.Resp r = ApiClient.post(this, "/api/auth/register", body, false);
                 if (!r.ok()) throw new AuthFailed(r.code, r.json.optString("error", "Register failed"));
                 JSONObject user = r.json.optJSONObject("user");

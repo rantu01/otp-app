@@ -2,6 +2,7 @@ package com.otpfetch.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.provider.Settings;
 
 import org.json.JSONObject;
 
@@ -72,10 +73,18 @@ public final class SessionManager {
     }
 
     /**
-     * Stable per-install fallback when the OS provides no usable ANDROID_ID.
-     * Generated once and persisted, so the activation screen is stable.
+     * Stable per-install device identity for single-session enforcement.
+     * ANDROID_ID (per device/user) is preferred; falls back to a
+     * persisted UUID when the OS provides none.
      */
-    public static String getOrCreateFallbackDeviceId(Context ctx) {
+    public static String getOrCreateDeviceId(Context ctx) {
+        try {
+            String androidId = Settings.Secure.getString(
+                    ctx.getContentResolver(), Settings.Secure.ANDROID_ID);
+            if (androidId != null && androidId.matches("(?i)[a-f0-9]{6,64}")) {
+                return androidId.toLowerCase();
+            }
+        } catch (Exception ignored) {}
         SharedPreferences p = prefs(ctx);
         String v = p.getString(KEY_DEVICE_FALLBACK, "");
         if (v == null || !v.matches("(?i)[a-f0-9]{16}")) {
@@ -84,5 +93,13 @@ public final class SessionManager {
             p.edit().putString(KEY_DEVICE_FALLBACK, v).apply();
         }
         return v;
+    }
+
+    /**
+     * Stable per-install fallback when the OS provides no usable ANDROID_ID.
+     * Generated once and persisted, so the activation screen is stable.
+     */
+    public static String getOrCreateFallbackDeviceId(Context ctx) {
+        return getOrCreateDeviceId(ctx);
     }
 }
