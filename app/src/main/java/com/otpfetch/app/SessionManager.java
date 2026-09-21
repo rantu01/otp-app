@@ -14,7 +14,6 @@ public final class SessionManager {
     private static final String KEY_TOKEN = "apiToken";
     private static final String KEY_USER = "apiUserJson";
     private static final String KEY_BASE = "apiBaseUrl";
-    private static final String KEY_DEVICE = "deviceId";
     private static final String KEY_DEVICE_FALLBACK = "deviceIdFallback";
     /** Central default backend URL (see ApiConfig — change it in one place). */
     public static final String DEFAULT_BASE = ApiConfig.DEFAULT_BASE_URL;
@@ -70,15 +69,6 @@ public final class SessionManager {
 
     public static void logout(Context ctx) {
         prefs(ctx).edit().remove(KEY_TOKEN).remove(KEY_USER).apply();
-    }
-
-    /** Device ID submitted on the activation screen (manual entry or auto-detected). */
-    public static String getDeviceId(Context ctx) {
-        return prefs(ctx).getString(KEY_DEVICE, "");
-    }
-
-    public static void setDeviceId(Context ctx, String id) {
-        prefs(ctx).edit().putString(KEY_DEVICE, id == null ? "" : id.trim()).apply();
     }
 
     /**

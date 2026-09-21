@@ -176,9 +176,7 @@ public class AuthActivity extends AppCompatActivity {
             try {
                 JSONObject body = new JSONObject();
                 body.put("password", pass);
-                // Bind this login to the device so one account cannot be live
-                // on two devices at once (backend enforces single session).
-                body.put("deviceId", currentDeviceId());
+                // No deviceId — credential login only (device ID not used for auth).
                 JSONObject resp;
                 int code;
                 if (register) {
@@ -245,20 +243,6 @@ public class AuthActivity extends AppCompatActivity {
             super(msg);
             this.code = code;
         }
-    }
-
-    /** Stable per-device identity for single-session enforcement. */
-    private String currentDeviceId() {
-        String saved = SessionManager.getDeviceId(this);
-        if (saved != null && !saved.isEmpty()) return saved;
-        try {
-            String androidId = android.provider.Settings.Secure.getString(
-                    getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
-            if (androidId != null && androidId.matches("(?i)[a-f0-9]{6,64}")) {
-                return androidId.toLowerCase();
-            }
-        } catch (Exception ignored) {}
-        return SessionManager.getOrCreateFallbackDeviceId(this);
     }
 
     private void toast(String m) {

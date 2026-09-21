@@ -22,25 +22,22 @@ import java.util.concurrent.Executors;
 /**
  * First-run App / Device Activation screen (sole LAUNCHER).
  *
- * Shows the device's Device ID (tap to copy), lets the user paste/type a
- * Device ID manually, and on Next activates against the backend
- * (POST /api/auth/device) and routes:
+ * Shows the device's Device ID (tap to copy) for reference only —
+ * NOT used for authentication. Primary login is username + password.
  *
- *   approved device account -> MainActivity (Home)
- *   pending / no package    -> PackageActivity (pay, then wait for admin)
- *   blocked account         -> stays here, fully locked out
- *   unreachable backend     -> blocking Retry (fail closed)
- *
- * Until an admin approves the activation/package, Home is unreachable —
- * every screen re-verifies server-side (see AccessGate).
+ * Routes:
+ *   access OK              -> MainActivity (Home)
+ *   PENDING / NO_PACKAGE   -> PackageActivity
+ *   DISABLED / ACCESS_DENIED -> locked here
+ *   unreachable backend    -> blocking Retry (fail closed)
  */
 public class ActivationActivity extends AppCompatActivity {
 
     private final ExecutorService net = Executors.newSingleThreadExecutor();
     private TextView deviceIdText;
-    private EditText deviceInput;
+    private EditText loginInput, passInput;
     private TextView hintView;
-    private Button nextBtn, exitBtn, loginBtn;
+    private Button loginBtn, registerBtn, nextBtn, exitBtn;
     private String detectedId = "";
     private boolean routing = false;
 
@@ -49,36 +46,32 @@ public class ActivationActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_activation);
         deviceIdText = findViewById(R.id.deviceIdText);
-        deviceInput = findViewById(R.id.deviceInput);
+        loginInput = findViewById(R.id.loginInput);
+        passInput = findViewById(R.id.passInput);
         hintView = findViewById(R.id.actHint);
+        loginBtn = findViewById(R.id.loginBtn);
+        registerBtn = findViewById(R.id.registerBtn);
         nextBtn = findViewById(R.id.nextBtn);
         exitBtn = findViewById(R.id.exitBtn);
-        loginBtn = findViewById(R.id.loginBtn);
 
         detectedId = detectDeviceId();
         deviceIdText.setText(detectedId);
-        String saved = SessionManager.getDeviceId(this);
-        deviceInput.setText(saved.isEmpty() ? detectedId : saved);
 
         deviceIdText.setOnClickListener(v -> {
             copyToClipboard(deviceIdText.getText().toString());
-            hintView.setText("Device ID copied — send it to your admin for activation.");
+            hintView.setText("Device ID copied — send it to your admin for reference.");
         });
+        loginBtn.setOnClickListener(v -> doLogin());
+        registerBtn.setOnClickListener(v -> doRegister());
         nextBtn.setOnClickListener(v -> doNext());
         exitBtn.setOnClickListener(v -> finishAffinity());
-        if (loginBtn != null) {
-            loginBtn.setOnClickListener(v ->
-                    startActivity(new Intent(this, AuthActivity.class)));
-        }
 
-        // Returning session? Verify server-side, then route. Otherwise the
-        // activation form above is the first-run experience.
         if (SessionManager.isLoggedIn(this)) {
             verifyAndRoute();
         }
     }
 
-    /** ANDROID_ID (hex, like the reference) with a stable persisted fallback. */
+    /** ANDROID_ID (hex) with a stable persisted fallback. */
     private String detectDeviceId() {
         try {
             String androidId = Settings.Secure.getString(
@@ -90,17 +83,116 @@ public class ActivationActivity extends AppCompatActivity {
         return SessionManager.getOrCreateFallbackDeviceId(this);
     }
 
-    private void doNext() {
-        String manual = deviceInput.getText().toString().trim();
-        String raw = manual.isEmpty() ? detectedId : manual;
-        String norm = raw.toLowerCase().replaceAll("[\\s\\-:]", "");
-        if (!norm.matches("[a-f0-9]{6,64}")) {
-            hintView.setText("Invalid Device ID. Use the shown ID or paste a valid one.");
-            toast("Invalid Device ID");
+    private void doLogin() {
+        String login = loginInput.getText().toString().trim();
+        String pass = passInput.getText().toString();
+        if (login.isEmpty() || pass.isEmpty()) {
+            toast("Username and password are required");
             return;
         }
         SessionManager.setBaseUrl(this, ApiConfig.DEFAULT_BASE_URL);
-        SessionManager.setDeviceId(this, norm);
+        hintView.setText("Logging in...");
+        UiBusy.setBusy(loginBtn, "Logging in...");
+        if (registerBtn != null) registerBtn.setEnabled(false);
+        net.execute(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("login", login);
+                body.put("password", pass);
+                ApiClient.Resp r = ApiClient.post(this, "/api/auth/login", body, false);
+                if (!r.ok()) throw new AuthFailed(r.code, r.json.optString("error", "Login failed"));
+                JSONObject user = r.json.optJSONObject("user");
+                SessionManager.saveLogin(this, r.json.optString("token", ""), user);
+                final JSONObject respFinal = r.json;
+                runOnUiThread(() -> {
+                    UiBusy.setIdle(loginBtn, "Login");
+                    if (registerBtn != null) { UiBusy.setIdle(registerBtn, "Create Account"); registerBtn.setEnabled(true); }
+                    AccessGate.Result result = AccessGate.fromAuthResponse(respFinal);
+                    if (result.allowed) {
+                        toast("Welcome " + (user != null ? user.optString("name", "") : ""));
+                    }
+                    routeByAccess(result);
+                });
+            } catch (AuthFailed e) {
+                runOnUiThread(() -> {
+                    UiBusy.setIdle(loginBtn, "Login");
+                    if (registerBtn != null) { UiBusy.setIdle(registerBtn, "Create Account"); registerBtn.setEnabled(true); }
+                    hintView.setText(e.getMessage());
+                    toast("Failed: " + e.getMessage());
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    UiBusy.setIdle(loginBtn, "Login");
+                    if (registerBtn != null) { UiBusy.setIdle(registerBtn, "Create Account"); registerBtn.setEnabled(true); }
+                    hintView.setText("Error: " + e.getMessage());
+                    toast("Failed: " + e.getMessage());
+                });
+            }
+        });
+    }
+
+    private void doRegister() {
+        String login = loginInput.getText().toString().trim();
+        String pass = passInput.getText().toString();
+        if (login.isEmpty() || pass.isEmpty()) {
+            toast("Username and password are required");
+            return;
+        }
+        if (pass.length() < 4) {
+            toast("Password must be at least 4 characters");
+            return;
+        }
+        SessionManager.setBaseUrl(this, ApiConfig.DEFAULT_BASE_URL);
+        hintView.setText("Creating account...");
+        UiBusy.setBusy(registerBtn, "Creating...");
+        loginBtn.setEnabled(false);
+        net.execute(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                if (login.contains("@")) body.put("email", login);
+                else body.put("phone", login);
+                body.put("password", pass);
+                ApiClient.Resp r = ApiClient.post(this, "/api/auth/register", body, false);
+                if (!r.ok()) throw new AuthFailed(r.code, r.json.optString("error", "Register failed"));
+                JSONObject user = r.json.optJSONObject("user");
+                SessionManager.saveLogin(this, r.json.optString("token", ""), user);
+                final JSONObject respFinal = r.json;
+                runOnUiThread(() -> {
+                    UiBusy.setIdle(registerBtn, "Create Account");
+                    loginBtn.setEnabled(true);
+                    AccessGate.Result result = AccessGate.fromAuthResponse(respFinal);
+                    if (result.allowed) {
+                        toast("Account created");
+                    }
+                    routeByAccess(result);
+                });
+            } catch (AuthFailed e) {
+                runOnUiThread(() -> {
+                    UiBusy.setIdle(registerBtn, "Create Account");
+                    loginBtn.setEnabled(true);
+                    hintView.setText(e.getMessage());
+                    toast("Failed: " + e.getMessage());
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    UiBusy.setIdle(registerBtn, "Create Account");
+                    loginBtn.setEnabled(true);
+                    hintView.setText("Error: " + e.getMessage());
+                    toast("Failed: " + e.getMessage());
+                });
+            }
+        });
+    }
+
+    /** Device activation (legacy — device ID no longer used for auth). */
+    private void doNext() {
+        String raw = detectedId;
+        String norm = raw.toLowerCase().replaceAll("[\\s\\-:]", "");
+        if (!norm.matches("[a-f0-9]{6,64}")) {
+            hintView.setText("Invalid Device ID.");
+            toast("Invalid Device ID");
+            return;
+        }
         hintView.setText("Activating...");
         UiBusy.setBusy(nextBtn, "Loading...");
         net.execute(() -> {
@@ -110,26 +202,15 @@ public class ActivationActivity extends AppCompatActivity {
                 ApiClient.Resp r = ApiClient.post(this, "/api/auth/device", body, false);
                 if (!r.ok()) {
                     final String err = r.json.optString("error", "Activation failed");
-                    runOnUiThread(() -> {
-                        UiBusy.setIdle(nextBtn, "next");
-                        hintView.setText(err);
-                        toast(err);
-                    });
+                    runOnUiThread(() -> { UiBusy.setIdle(nextBtn, "next"); hintView.setText(err); toast(err); });
                     return;
                 }
                 JSONObject user = r.json.optJSONObject("user");
                 SessionManager.saveLogin(this, r.json.optString("token", ""), user);
                 final JSONObject respFinal = r.json;
-                runOnUiThread(() -> {
-                    UiBusy.setIdle(nextBtn, "next");
-                    routeByAccess(AccessGate.fromAuthResponse(respFinal));
-                });
+                runOnUiThread(() -> { UiBusy.setIdle(nextBtn, "next"); routeByAccess(AccessGate.fromAuthResponse(respFinal)); });
             } catch (Exception e) {
-                runOnUiThread(() -> {
-                    UiBusy.setIdle(nextBtn, "next");
-                    hintView.setText("Error: " + e.getMessage());
-                    toast("Failed: " + e.getMessage());
-                });
+                runOnUiThread(() -> { UiBusy.setIdle(nextBtn, "next"); hintView.setText("Error: " + e.getMessage()); toast("Failed: " + e.getMessage()); });
             }
         });
     }
@@ -165,14 +246,10 @@ public class ActivationActivity extends AppCompatActivity {
             return;
         }
         if (r.needsPackage()) {
-            // Pending approval or no subscription: purchase flow only, never Home.
             startActivity(new Intent(this, PackageActivity.class));
             finish();
             return;
         }
-        // DISABLED / ACCESS_DENIED / anything else: full lockout on this screen.
-        // The saved token is useless (backend denies it); clear blocked sessions
-        // but keep pending ones for re-checks.
         if ("DISABLED".equals(r.reason) || "ACCESS_DENIED".equals(r.reason)) {
             SessionManager.logout(this);
         }
@@ -184,15 +261,12 @@ public class ActivationActivity extends AppCompatActivity {
         if (isFinishing()) return;
         new AlertDialog.Builder(this)
                 .setTitle("Cannot verify access")
-                .setMessage("The server could not be reached. Activation must be verified before the app can be used.")
+                .setMessage("The server could not be reached. Access must be verified before the app can be used.")
                 .setCancelable(false)
                 .setPositiveButton("Retry", (d, w) -> {
                     routing = false;
                     if (SessionManager.isLoggedIn(this)) verifyAndRoute();
-                    else {
-                        UiBusy.setIdle(nextBtn, "next");
-                        hintView.setText("");
-                    }
+                    else { UiBusy.setIdle(nextBtn, "next"); hintView.setText(""); }
                 })
                 .setNegativeButton("Exit", (d, w) -> finishAffinity())
                 .show();
@@ -212,5 +286,10 @@ public class ActivationActivity extends AppCompatActivity {
     protected void onDestroy() {
         net.shutdownNow();
         super.onDestroy();
+    }
+
+    private static final class AuthFailed extends Exception {
+        final int code;
+        AuthFailed(int code, String msg) { super(msg); this.code = code; }
     }
 }
