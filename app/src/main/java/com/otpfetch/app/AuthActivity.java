@@ -176,7 +176,6 @@ public class AuthActivity extends AppCompatActivity {
             try {
                 JSONObject body = new JSONObject();
                 body.put("password", pass);
-                body.put("deviceId", SessionManager.getOrCreateDeviceId(this));
                 JSONObject resp;
                 int code;
                 if (register) {

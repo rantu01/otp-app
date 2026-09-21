@@ -2,7 +2,6 @@ package com.otpfetch.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.provider.Settings;
 
 import org.json.JSONObject;
 
@@ -15,7 +14,6 @@ public final class SessionManager {
     private static final String KEY_TOKEN = "apiToken";
     private static final String KEY_USER = "apiUserJson";
     private static final String KEY_BASE = "apiBaseUrl";
-    private static final String KEY_DEVICE_FALLBACK = "deviceIdFallback";
     /** Central default backend URL (see ApiConfig — change it in one place). */
     public static final String DEFAULT_BASE = ApiConfig.DEFAULT_BASE_URL;
 
@@ -70,36 +68,5 @@ public final class SessionManager {
 
     public static void logout(Context ctx) {
         prefs(ctx).edit().remove(KEY_TOKEN).remove(KEY_USER).apply();
-    }
-
-    /**
-     * Stable per-install device identity for single-session enforcement.
-     * ANDROID_ID (per device/user) is preferred; falls back to a
-     * persisted UUID when the OS provides none.
-     */
-    public static String getOrCreateDeviceId(Context ctx) {
-        try {
-            String androidId = Settings.Secure.getString(
-                    ctx.getContentResolver(), Settings.Secure.ANDROID_ID);
-            if (androidId != null && androidId.matches("(?i)[a-f0-9]{6,64}")) {
-                return androidId.toLowerCase();
-            }
-        } catch (Exception ignored) {}
-        SharedPreferences p = prefs(ctx);
-        String v = p.getString(KEY_DEVICE_FALLBACK, "");
-        if (v == null || !v.matches("(?i)[a-f0-9]{16}")) {
-            String rand = java.util.UUID.randomUUID().toString().replace("-", "").toLowerCase();
-            v = rand.substring(0, 16);
-            p.edit().putString(KEY_DEVICE_FALLBACK, v).apply();
-        }
-        return v;
-    }
-
-    /**
-     * Stable per-install fallback when the OS provides no usable ANDROID_ID.
-     * Generated once and persisted, so the activation screen is stable.
-     */
-    public static String getOrCreateFallbackDeviceId(Context ctx) {
-        return getOrCreateDeviceId(ctx);
     }
 }

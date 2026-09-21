@@ -26,12 +26,12 @@
         android:usesCleartextTraffic="true">
 
         <!-- ActivationActivity is the only entry point: first run shows the
-             Device ID activation screen, and every cold start re-verifies the
-             session + backend access status, routing to Main (approved) /
-             Package (pending/no subscription) / locked (blocked).
-             MainActivity is NOT exported, so Home cannot be deep-linked
-             or launched directly to bypass the gate. AuthActivity is kept
-             only as a dormant credential fallback (no UI path leads to it). -->
+              credential login screen, and every cold start re-verifies the
+              session + backend access status, routing to Main (approved) /
+              Package (pending/no subscription) / locked (blocked).
+              MainActivity is NOT exported, so Home cannot be deep-linked
+              or launched directly to bypass the gate. AuthActivity is kept
+              only as a dormant credential fallback (no UI path leads to it). -->
         <activity
             android:name=".ActivationActivity"
             android:exported="true"
