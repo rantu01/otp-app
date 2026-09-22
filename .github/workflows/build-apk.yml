@@ -82,4 +82,8 @@ jobs:
           name: Rantu OTP ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           files: app/build/outputs/apk/release/*.apk
-          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            Download the APK below and install it on Android.
+
+            The APK is the only release asset provided by this workflow.
