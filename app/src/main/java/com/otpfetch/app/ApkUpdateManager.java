@@ -83,7 +83,12 @@ public class ApkUpdateManager {
                 int totalSize = 0;
                 int downloaded = 0;
                 File outFile = new File(ctx.getCacheDir(), fileName);
-                URL url = new URL(SessionManager.getBaseUrl(ctx) + downloadUrl);
+                String dl = downloadUrl;
+                String dlLower = dl == null ? "" : dl.toLowerCase();
+                String fullUrl = (dlLower.startsWith("http://") || dlLower.startsWith("https://"))
+                        ? dl
+                        : SessionManager.getBaseUrl(ctx) + dl;
+                URL url = new URL(fullUrl);
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
                 conn.setConnectTimeout(30000);
