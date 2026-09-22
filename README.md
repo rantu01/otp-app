@@ -30,7 +30,7 @@ No new dependencies beyond AndroidX/AppCompat/Material — networking is plain
   the app and kills the process.
 
 ## Project layout
-
+ 
 ```
 OTP-Android-App/
   settings.gradle  build.gradle  gradle.properties
