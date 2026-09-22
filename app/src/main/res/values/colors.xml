@@ -1,38 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Vibrant light theme -->
-    <color name="screen_bg">#EDE7F6</color>
+    <!-- Restrained utility palette -->
+    <color name="screen_bg">#F5F7FB</color>
     <color name="card_bg">#FFFFFF</color>
-    <color name="title_text">#2D2A4A</color>
-    <color name="accent_blue">#6C3CE0</color>
-    <color name="accent_pink">#E040FB</color>
-    <color name="accent_teal">#00ACC1</color>
-    <color name="accent_orange">#FB8C00</color>
-    <color name="info_bg">#F3EFFF</color>
-    <color name="otp_green">#00A152</color>
-    <color name="success">#00A152</color>
-    <color name="error">#E53935</color>
-    <color name="danger">#E53935</color>
-    <color name="exit_red">#E53935</color>
-    <color name="go_green">#00A152</color>
-    <color name="float_purple">#6C3CE0</color>
-    <color name="header_start">#7C4DFF</color>
-    <color name="header_end">#E040FB</color>
-    <color name="tab_active">#6C3CE0</color>
-    <color name="log_bg">#1A1430</color>
-    <color name="log_text">#7CFC98</color>
-    <color name="bubble_bg">#7C4DFF</color>
+    <color name="title_text">#172033</color>
+    <color name="accent_blue">#3157C7</color>
+    <color name="accent_pink">#C54B78</color>
+    <color name="accent_teal">#087F8C</color>
+    <color name="accent_orange">#B86B00</color>
+    <color name="info_bg">#EEF3FF</color>
+    <color name="otp_green">#087A52</color>
+    <color name="success">#087A52</color>
+    <color name="error">#B42318</color>
+    <color name="danger">#B42318</color>
+    <color name="exit_red">#B42318</color>
+    <color name="go_green">#087A52</color>
+    <color name="float_purple">#3157C7</color>
+    <color name="header_start">#243B8F</color>
+    <color name="header_end">#3157C7</color>
+    <color name="tab_active">#3157C7</color>
+    <color name="log_bg">#172033</color>
+    <color name="log_text">#8BE0B9</color>
+    <color name="bubble_bg">#3157C7</color>
     <color name="bubble_text">#FFFFFF</color>
     <color name="popup_dim">#99000000</color>
     <color name="input_hint">#8A8F98</color>
     <color name="ic_launcher_background">#000000</color>
     <!-- Text on bright tinted buttons: white in light mode (dark text in night mode) -->
     <color name="on_tint">#FFFFFF</color>
-    <!-- Default purple button (matches old colorPrimary look) -->
-    <color name="btn_primary">#7C4DFF</color>
+    <color name="btn_primary">#3157C7</color>
     <!-- Programmatic package cards (were hardcoded, now theme-aware) -->
-    <color name="pkg_card">#F3EFFF</color>
-    <color name="pkg_selected">#E8F5E9</color>
+    <color name="pkg_card">#EEF3FF</color>
+    <color name="pkg_selected">#E4F5ED</color>
     <color name="pkg_row">#FFFFFF</color>
     <color name="muted_text">#6B7280</color>
 </resources>

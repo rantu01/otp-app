@@ -15,7 +15,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:text="Profile"
+            android:text="Account profile"
             android:textColor="@color/accent_blue"
             android:textSize="20sp"
             android:textStyle="bold" />
@@ -24,7 +24,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Username (cannot be changed)"
+            android:text="Account identity"
             android:textColor="@color/muted_text"
             android:textSize="12sp" />
 
@@ -95,7 +95,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:backgroundTint="@color/go_green"
-            android:text="Change Password" />
+            android:text="Update password" />
 
         <Button
             android:id="@+id/profileBackBtn"
@@ -103,6 +103,15 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:backgroundTint="@color/btn_primary"
-            android:text="Back" />
+            android:text="Back to workspace" />
+
+        <Button
+            android:id="@+id/profileSignOutBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:backgroundTint="@color/danger"
+            android:text="Sign out"
+            android:textColor="@color/on_tint" />
     </LinearLayout>
 </ScrollView>

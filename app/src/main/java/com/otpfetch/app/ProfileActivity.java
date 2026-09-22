@@ -23,7 +23,7 @@ public class ProfileActivity extends AppCompatActivity {
     private final ExecutorService net = Executors.newSingleThreadExecutor();
     private TextView usernameView, infoView;
     private EditText currentPassInput, newPassInput, confirmPassInput;
-    private Button changeBtn, backBtn;
+    private Button changeBtn, backBtn, signOutBtn;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,6 +41,7 @@ public class ProfileActivity extends AppCompatActivity {
         confirmPassInput = findViewById(R.id.confirmPassInput);
         changeBtn = findViewById(R.id.changePassBtn);
         backBtn = findViewById(R.id.profileBackBtn);
+        signOutBtn = findViewById(R.id.profileSignOutBtn);
 
         JSONObject u = SessionManager.getUser(this);
         String username = "";
@@ -57,6 +58,17 @@ public class ProfileActivity extends AppCompatActivity {
 
         changeBtn.setOnClickListener(v -> changePassword());
         if (backBtn != null) backBtn.setOnClickListener(v -> finish());
+        if (signOutBtn != null) signOutBtn.setOnClickListener(v -> new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Sign out?")
+            .setMessage("You will need to sign in again to use the OTP workspace.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Sign out", (d, w) -> {
+                SessionManager.logout(this);
+                Intent i = new Intent(this, ActivationActivity.class);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                startActivity(i);
+                finish();
+            }).show());
     }
 
     private void changePassword() {

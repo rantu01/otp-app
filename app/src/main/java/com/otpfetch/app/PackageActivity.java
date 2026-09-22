@@ -192,6 +192,7 @@ public class PackageActivity extends AppCompatActivity {
             LinearLayout card = new LinearLayout(this);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(16, 16, 16, 16);
+            card.setElevation(2f);
             card.setBackgroundColor(ContextCompat.getColor(this,
                     idx == selectedMethod ? R.color.pkg_selected : R.color.pkg_card));
 
@@ -219,6 +220,8 @@ public class PackageActivity extends AppCompatActivity {
             row.setOrientation(LinearLayout.HORIZONTAL);
             Button copyBtn = new Button(this);
             copyBtn.setText("Copy Number");
+            copyBtn.setAllCaps(false);
+            copyBtn.setTextColor(ContextCompat.getColor(this, R.color.title_text));
             copyBtn.setOnClickListener(v -> {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("wallet", o.optString("walletNumber")));
@@ -226,6 +229,10 @@ public class PackageActivity extends AppCompatActivity {
             });
             Button useBtn = new Button(this);
             useBtn.setText(idx == selectedMethod ? "✓ Selected" : "Use");
+                useBtn.setAllCaps(false);
+                useBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                    ContextCompat.getColor(this, idx == selectedMethod ? R.color.success : R.color.btn_primary)));
+                useBtn.setTextColor(ContextCompat.getColor(this, R.color.on_tint));
             useBtn.setOnClickListener(v -> {
                 selectedMethod = idx;
                 renderMethods();
@@ -264,7 +271,7 @@ public class PackageActivity extends AppCompatActivity {
             s += "\nTxID: " + o.optString("transactionId");
             t.setText(s);
             t.setPadding(12, 12, 12, 12);
-            t.setBackgroundColor(ContextCompat.getColor(this, R.color.pkg_row));
+            t.setBackground(ContextCompat.getDrawable(this, R.drawable.bg_card));
             t.setTextColor(ContextCompat.getColor(this, R.color.title_text));
             myPaymentsList.addView(t);
             View sep = new View(this);
@@ -338,8 +345,11 @@ public class PackageActivity extends AppCompatActivity {
     private Button styledButton(String label, boolean selected) {
         Button b = new Button(this);
         b.setText((selected ? "✓ " : "") + label);
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(selected ? 0xFF00A152 : 0xFF6C3CE0));
-        b.setTextColor(0xFFFFFFFF);
+        b.setAllCaps(false);
+        b.setMinHeight(56);
+        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this,
+            selected ? R.color.success : R.color.btn_primary)));
+        b.setTextColor(ContextCompat.getColor(this, R.color.on_tint));
         return b;
     }
 

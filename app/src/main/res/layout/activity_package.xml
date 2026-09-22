@@ -9,13 +9,13 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="16dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:text="No Active Package"
+            android:text="Packages &amp; payments"
             android:textColor="@color/accent_blue"
             android:textSize="20sp"
             android:textStyle="bold" />
@@ -26,7 +26,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:gravity="center"
-            android:text="Loading packages..."
+            android:text="Checking your subscription..."
             android:textSize="13sp"
             android:textStyle="bold" />
 
@@ -34,7 +34,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="Select a Package"
+            android:text="Choose a package"
             android:textStyle="bold" />
 
         <LinearLayout
@@ -47,7 +47,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="Payment Method"
+            android:text="Payment method"
             android:textStyle="bold" />
 
         <LinearLayout
@@ -63,7 +63,7 @@
             android:layout_marginTop="8dp"
             android:background="@color/card_bg"
             android:padding="8dp"
-            android:text="Package: —&#10;Method: —" />
+            android:text="Selected package: —&#10;Selected method: —" />
 
         <EditText
             android:id="@+id/txidInput"
@@ -71,7 +71,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:background="@color/card_bg"
-            android:hint="Transaction ID (after Send Money)"
+            android:hint="Transaction ID after payment"
             android:padding="10dp" />
 
         <Button
@@ -80,7 +80,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:backgroundTint="@color/go_green"
-            android:text="Submit Payment"
+            android:text="Submit payment"
             android:textColor="@color/on_tint" />
 
         <Button
@@ -95,7 +95,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="My Payments"
+            android:text="Payment history"
             android:textStyle="bold" />
 
         <LinearLayout

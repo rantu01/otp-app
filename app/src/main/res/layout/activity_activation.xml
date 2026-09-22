@@ -4,7 +4,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#757575"
+    android:background="@color/screen_bg"
     android:gravity="center"
     android:orientation="vertical"
     android:padding="24dp">
@@ -19,26 +19,26 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#FFFFFF"
-            android:padding="18dp"
-            android:text="Nesa Activation"
-            android:textColor="#000000"
-            android:textSize="22sp"
+            android:background="@color/card_bg"
+            android:padding="22dp"
+            android:text="Rantu OTP"
+            android:textColor="@color/title_text"
+            android:textSize="24sp"
             android:textStyle="bold" />
 
         <!-- body -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#0B1233"
+            android:background="@color/header_start"
             android:orientation="vertical"
             android:padding="18dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🔒 App Security Locked"
-                android:textColor="#6FB1E8"
+                android:text="Secure OTP workspace"
+                android:textColor="#FFFFFF"
                 android:textSize="17sp" />
 
             <EditText
@@ -46,12 +46,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:background="#FFFFFF"
+                android:background="@color/card_bg"
                 android:hint="Username (email or phone)"
                 android:inputType="textEmailAddress"
                 android:padding="10dp"
-                android:textColor="#2D2A4A"
-                android:textColorHint="#8A8F98"
+                android:textColor="@color/title_text"
+                android:textColorHint="@color/input_hint"
                 android:textSize="14sp" />
 
             <EditText
@@ -59,12 +59,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:background="#FFFFFF"
+                android:background="@color/card_bg"
                 android:hint="Password"
                 android:inputType="textPassword"
                 android:padding="10dp"
-                android:textColor="#2D2A4A"
-                android:textColorHint="#8A8F98"
+                android:textColor="@color/title_text"
+                android:textColorHint="@color/input_hint"
                 android:textSize="14sp" />
 
             <Button
@@ -72,7 +72,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:backgroundTint="@color/go_green"
+                android:backgroundTint="@color/accent_teal"
                 android:text="Login"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp" />
@@ -82,7 +82,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:backgroundTint="@color/accent_teal"
+                android:backgroundTint="@color/btn_primary"
                 android:text="Create Account"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp" />
@@ -101,7 +101,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#FFFFFF"
+            android:background="@color/card_bg"
             android:gravity="right|center_vertical"
             android:orientation="horizontal"
             android:padding="14dp">

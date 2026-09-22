@@ -24,16 +24,16 @@
         android:layout_height="wrap_content"
         android:minHeight="480dp"
         android:orientation="vertical"
-        android:padding="12dp"
+        android:padding="16dp"
         android:paddingBottom="8dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:text="Rantu_OTP"
+            android:text="OTP workspace"
             android:textColor="@color/accent_blue"
-            android:textSize="20sp"
+            android:textSize="24sp"
             android:textStyle="bold" />
 
         <!-- Access / account bar (backend-validated; does not change OTP UI below) -->
@@ -44,14 +44,15 @@
             android:layout_marginTop="8dp"
             android:orientation="vertical"
             android:background="@color/card_bg"
-            android:padding="8dp">
+            android:padding="12dp">
 
             <TextView
                 android:id="@+id/accessStatus"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
+                android:gravity="start"
                 android:text="Checking access..."
+                android:textColor="@color/title_text"
                 android:textSize="12sp"
                 android:textStyle="bold" />
 
@@ -90,14 +91,15 @@
             android:background="@color/card_bg"
             android:elevation="2dp"
             android:orientation="vertical"
-            android:padding="10dp">
+            android:padding="14dp">
 
             <TextView
                 android:id="@+id/serverStatus"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="○ Stopped"
+                android:gravity="start"
+                android:text="Bridge stopped"
+                android:textColor="@color/title_text"
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
@@ -107,7 +109,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:backgroundTint="@color/float_purple"
-                android:text="Start" />
+                android:text="Start local bridge" />
         </LinearLayout>
 
         <!-- Tabs -->
@@ -122,8 +124,8 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:backgroundTint="@color/accent_teal"
-                android:text="OTP"
+                android:backgroundTint="@color/tab_active"
+                android:text="OTP fetcher"
                 android:textColor="@color/on_tint" />
 
             <Button
@@ -134,7 +136,7 @@
                 android:layout_weight="1"
                 android:alpha="0.5"
                 android:backgroundTint="@color/accent_orange"
-                android:text="Names"
+                android:text="Name generator"
                 android:textColor="@color/on_tint" />
         </LinearLayout>
 
@@ -148,12 +150,21 @@
             android:elevation="2dp"
             android:minHeight="260dp"
             android:orientation="vertical"
-            android:padding="10dp">
+            android:padding="14dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Paste account details"
+                android:textColor="@color/title_text"
+                android:textSize="16sp"
+                android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/accountData"
                 android:layout_width="match_parent"
                 android:layout_height="70dp"
+                android:layout_marginTop="8dp"
                 android:background="@color/info_bg"
                 android:gravity="top"
                 android:hint="Email|Token|ID"
@@ -201,7 +212,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:backgroundTint="@color/go_green"
-            android:text="GET CODE"
+            android:text="Get code"
             android:textColor="@color/on_tint" />
 
             <TextView
@@ -229,7 +240,8 @@
                     android:gravity="center"
                     android:text="------"
                     android:textColor="@color/otp_green"
-                    android:textSize="26sp"
+                    android:fontFamily="monospace"
+                    android:textSize="32sp"
                     android:textStyle="bold" />
 
                 <Button
@@ -237,7 +249,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:backgroundTint="@color/go_green"
-                    android:text="Copy"
+                    android:text="Copy code"
                     android:textColor="@color/on_tint" />
             </LinearLayout>
 
