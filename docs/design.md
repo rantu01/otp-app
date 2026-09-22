@@ -6,15 +6,15 @@ A light, operational interface built around deep cobalt, slate text, quiet blue 
 
 ## Tokens
 
-- Primary: `accent_blue` / `#3157C7`; deep primary: `header_start` / `#243B8F`.
-- Text: `title_text` / `#172033`; secondary: `muted_text` / `#6B7280`; hint: `input_hint`.
-- Surfaces: `screen_bg` / `#F5F7FB`; `card_bg` / `#FFFFFF`; informational surface: `info_bg` / `#EEF3FF`.
-- Semantic: `success` and `otp_green` for confirmed states, `accent_orange` for pending, `danger` for blocked or destructive actions.
+- Primary: `accent_blue` / `#3B49DF`; deep primary: `header_start` / `#2E38A8`.
+- Text: `title_text` / `#0F172A`; secondary: `muted_text` / `#6B7280`; hint: `input_hint`.
+- Surfaces: `screen_bg` / `#F8FAFC`; `card_bg` / `#FFFFFF`; informational surface: `info_bg` / `#EFF4FF`.
+- Semantic: `success` and `otp_green` / `#059669` for confirmed states, `accent_orange` / `#D97706` for pending, `danger` / `#DC2626` for blocked or destructive actions.
 - Borders: one-pixel `stroke` with no decorative gradients.
 
 ## Type and spacing
 
-Use the platform sans family with bold headings and tabular/monospace numerals for OTP codes. Base spacing is 8dp: 8, 12, 16, 24, and 32dp. Content gutters are 16dp on phones. Primary controls are at least 48dp high. Cards use 12-16dp corners and a subtle one-pixel border.
+Use a clean Android sans family with bold headings and tabular/monospace numerals for OTP codes. Base spacing is 8dp: 8, 12, 16, 24, and 32dp. Content gutters are 16dp on phones. Primary controls are at least 48dp high. Cards use 12-16dp corners and a subtle one-pixel border.
 
 ## Layout
 
