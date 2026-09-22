@@ -22,8 +22,8 @@ android {
         targetSdk = 34
         // Increase this for every published APK. Android uses it to decide
         // whether an APK is a valid update of the installed app.
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.0.1"
     }
 
     signingConfigs {
