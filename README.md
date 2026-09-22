@@ -63,6 +63,27 @@ OTP-Android-App/
    when enabling the floating widget.
 3. Run on a device (min SDK 26, target/compile 34) or Build → Generate Signed APK.
 
+## Update-safe APK signing
+
+Android updates require all of the following to remain unchanged:
+
+- `applicationId` (`com.otpfetch.app` for this app)
+- the signing certificate/private key
+- an increasing `versionCode`
+
+Release builds read these environment variables: `ANDROID_KEYSTORE_PATH`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
+Keep the keystore backed up securely and reuse it for every release. The GitHub
+Actions workflow requires the same keystore as the `ANDROID_KEYSTORE_BASE64`
+secret, plus the four password/alias secrets. It intentionally refuses to
+publish a debug-signed CI APK because a new CI runner has a different debug key.
+
+If an older installed APK was already signed with a different key, Android
+cannot replace it for security reasons. That build must be uninstalled once
+(or migrated through an official installer signed by the original key); after
+that, install the persistent-key release and future updates will install over
+it normally.
+
 ## Notes
 
 - `android:usesCleartextTraffic="true"` is set so the local `http://127.0.0.1:3000`

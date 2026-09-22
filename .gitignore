@@ -11,6 +11,7 @@ app/release/
 # Signing secrets — never commit these
 *.jks
 *.keystore
+.env
 
 # Wrapper jar (we build with system Gradle in CI, see .github/workflows/)
 gradle/wrapper/gradle-wrapper.jar

@@ -6,17 +6,42 @@ android {
     namespace = "com.otpfetch.app"
     compileSdk = 34
 
+    def signingEnv = new Properties()
+    def signingEnvFile = file("$rootDir/.env")
+    if (signingEnvFile.exists()) {
+        signingEnvFile.withInputStream { signingEnv.load(it) }
+    }
+    def signingValue = { String name ->
+        def value = System.getenv(name)
+        return value != null && !value.isEmpty() ? value : signingEnv.getProperty(name, "")
+    }
+
     defaultConfig {
         applicationId = "com.otpfetch.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // Increase this for every published APK. Android uses it to decide
+        // whether an APK is a valid update of the installed app.
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    signingConfigs {
+        release {
+            def keystorePath = signingValue("ANDROID_KEYSTORE_PATH")
+            if (keystorePath != null && !keystorePath.isEmpty()) {
+                storeFile = file(keystorePath)
+                storePassword = signingValue("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("ANDROID_KEY_ALIAS")
+                keyPassword = signingValue("ANDROID_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
