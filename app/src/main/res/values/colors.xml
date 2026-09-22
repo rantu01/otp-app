@@ -34,4 +34,5 @@
     <color name="pkg_selected">#E4F5ED</color>
     <color name="pkg_row">#FFFFFF</color>
     <color name="muted_text">#6B7280</color>
+    <color name="stroke">#D8DFEC</color>
 </resources>

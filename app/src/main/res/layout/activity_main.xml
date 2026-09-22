@@ -43,7 +43,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:orientation="vertical"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card"
             android:padding="12dp">
 
             <TextView
@@ -88,7 +88,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card"
             android:elevation="2dp"
             android:orientation="vertical"
             android:padding="14dp">
@@ -146,7 +146,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card"
             android:elevation="2dp"
             android:minHeight="260dp"
             android:orientation="vertical"
@@ -165,7 +165,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="70dp"
                 android:layout_marginTop="8dp"
-                android:background="@color/info_bg"
+                android:background="@drawable/bg_input"
                 android:gravity="top"
                 android:hint="Email|Token|ID"
                 android:inputType="textMultiLine"
@@ -183,7 +183,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:background="@color/info_bg"
+                android:background="@drawable/bg_card"
                 android:orientation="vertical"
                 android:padding="8dp"
                 android:visibility="gone">
@@ -228,7 +228,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:background="@color/info_bg"
+                android:background="@drawable/bg_card"
                 android:orientation="vertical"
                 android:padding="8dp"
                 android:visibility="gone">
@@ -268,7 +268,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card"
             android:elevation="2dp"
             android:minHeight="260dp"
             android:orientation="vertical"
@@ -336,7 +336,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:background="@color/info_bg"
+                android:background="@drawable/bg_card"
                 android:orientation="vertical"
                 android:padding="8dp"
                 android:visibility="gone">
@@ -413,7 +413,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card"
             android:elevation="2dp"
             android:orientation="vertical"
             android:padding="10dp">
@@ -478,7 +478,7 @@
             android:id="@+id/bottomNav"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card"
             android:elevation="8dp" />
     </LinearLayout>
 

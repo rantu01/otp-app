@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="20dp">
 
         <TextView
             android:layout_width="match_parent"
@@ -26,7 +26,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_input"
             android:hint="Username (email or phone)"
             android:inputType="textEmailAddress"
             android:padding="10dp"
@@ -37,7 +37,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_input"
             android:hint="Name (for new accounts)"
             android:padding="10dp"
             android:textSize="14sp" />
@@ -47,7 +47,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_input"
             android:hint="Password"
             android:inputType="textPassword"
             android:padding="10dp"

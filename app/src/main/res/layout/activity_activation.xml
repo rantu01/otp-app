@@ -13,13 +13,15 @@
         android:id="@+id/actCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:background="@drawable/bg_card"
+        android:orientation="vertical"
+        android:padding="20dp">
 
         <!-- header -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@color/card_bg"
+            android:background="@color/screen_bg"
             android:padding="22dp"
             android:text="Rantu OTP"
             android:textColor="@color/title_text"
@@ -46,7 +48,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:background="@color/card_bg"
+                android:background="@drawable/bg_input"
                 android:hint="Username (email or phone)"
                 android:inputType="textEmailAddress"
                 android:padding="10dp"
@@ -59,7 +61,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:background="@color/card_bg"
+                android:background="@drawable/bg_input"
                 android:hint="Password"
                 android:inputType="textPassword"
                 android:padding="10dp"
