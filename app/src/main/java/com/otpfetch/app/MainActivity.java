@@ -1286,12 +1286,12 @@ public class MainActivity extends AppCompatActivity {
                 if (now0 - lastVersionCheckAt > VERSION_CHECK_TTL_MS) {
                     lastVersionCheckAt = now0;
                     String installed = ApiClient.appVersion(MainActivity.this);
+                        int installedCode = ApiClient.appVersionCode(MainActivity.this);
                     ApiClient.Resp ver = ApiClient.get(this,
-                            "/api/versions/check?platform=android&version=" + installed, false);
+                            "/api/versions/check?platform=android&version=" + installed + "&versionCode=" + installedCode, false);
                     // Updates are advisory only: record availability, notify once,
                     // and ALWAYS continue to the access checks below (never block).
-                    if (ver.ok() && (ver.json.optBoolean("forceUpdate", false)
-                            || ver.json.optBoolean("updateRequired", false))) {
+                        if (ver.ok() && ver.json.optBoolean("updateAvailable", false)) {
                         updateAvailable = true;
                         updateUrl = ver.json.optString("updateUrl", "");
                         updateMessage = ver.json.optString("message", "");
@@ -1437,10 +1437,10 @@ public class MainActivity extends AppCompatActivity {
         net.execute(() -> {
             try {
                 String installed = ApiClient.appVersion(MainActivity.this);
+                int installedCode = ApiClient.appVersionCode(MainActivity.this);
                 ApiClient.Resp ver = ApiClient.get(this,
-                        "/api/versions/check?platform=android&version=" + installed, false);
-                boolean avail = ver.ok() && (ver.json.optBoolean("forceUpdate", false)
-                        || ver.json.optBoolean("updateRequired", false));
+                    "/api/versions/check?platform=android&version=" + installed + "&versionCode=" + installedCode, false);
+                boolean avail = ver.ok() && ver.json.optBoolean("updateAvailable", false);
                 if (avail) {
                     updateAvailable = true;
                     updateUrl = ver.json.optString("updateUrl", "");

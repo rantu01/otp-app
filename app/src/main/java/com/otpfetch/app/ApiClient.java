@@ -88,4 +88,13 @@ public final class ApiClient {
             return "1.0";
         }
     }
+
+    public static int appVersionCode(Context ctx) {
+        try {
+            android.content.pm.PackageInfo info = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
+            return info.versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
 }
