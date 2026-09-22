@@ -154,6 +154,11 @@ public class MainActivity extends AppCompatActivity {
     // does not re-download the version payload on every foreground.
     private static volatile long lastVersionCheckAt = 0;
     private static final long VERSION_CHECK_TTL_MS = 15 * 60 * 1000;
+    // APK update download state
+    private volatile boolean updateDownloading = false;
+    private volatile String updateApkPath = null;
+    private volatile boolean updateRequired = false;
+    private volatile int updateVersionCode = 0;
 
     // auto OTP actions
     private CheckBox autoCopyCheck;
@@ -1277,27 +1282,30 @@ public class MainActivity extends AppCompatActivity {
      * FAIL-CLOSED: any denial, dead session or unreachable backend bounces out
      * of Home. There is intentionally no "Later" path — unverified users cannot
      * use this screen, and CLEAR_TASK prevents navigating back into it.
+     * Advisory APK update check runs alongside access gate — never blocks.
      */
     private void enforceAccessGate() {
         net.execute(() -> {
             try {
-                // Advisory update check, cached (see VERSION_CHECK_TTL_MS).
+                // Advisory APK update check, cached (see VERSION_CHECK_TTL_MS).
                 long now0 = System.currentTimeMillis();
                 if (now0 - lastVersionCheckAt > VERSION_CHECK_TTL_MS) {
                     lastVersionCheckAt = now0;
-                    String installed = ApiClient.appVersion(MainActivity.this);
-                        int installedCode = ApiClient.appVersionCode(MainActivity.this);
-                    ApiClient.Resp ver = ApiClient.get(this,
-                            "/api/versions/check?platform=android&version=" + installed + "&versionCode=" + installedCode, false);
-                    // Updates are advisory only: record availability, notify once,
-                    // and ALWAYS continue to the access checks below (never block).
-                        if (ver.ok() && ver.json.optBoolean("updateAvailable", false)) {
-                        updateAvailable = true;
-                        updateUrl = ver.json.optString("updateUrl", "");
-                        updateMessage = ver.json.optString("message", "");
-                        latestVersion = ver.json.optString("latestVersion", "");
-                        main.post(() -> showUpdateNotice(false));
-                    }
+                    try {
+                        JSONObject info = ApkUpdateManager.checkForUpdate(MainActivity.this);
+                        if (info != null) {
+                            updateAvailable = true;
+                            updateUrl = info.optString("downloadUrl", "");
+                            updateMessage = info.optString("releaseNotes", "");
+                            latestVersion = info.optString("versionName", "");
+                            updateRequired = info.optBoolean("updateRequired", false);
+                            updateVersionCode = info.optInt("versionCode", 0);
+                            main.post(() -> {
+                                if (updateRequired) showRequiredUpdate(latestVersion, updateMessage, updateUrl, "update.apk");
+                                else showOptionalUpdate(latestVersion, updateVersionCode, updateMessage, updateUrl, "update.apk");
+                            });
+                        }
+                    } catch (Exception ignored) { /* advisory — never block */ }
                 }
             } catch (Exception e) {
                 accessAllowed = false;
@@ -1401,58 +1409,86 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Optional-update notice: informs the user a new version exists but never
-     * blocks the app. Shown once per session automatically; the navigation
-     * drawer can re-trigger it manually at any time.
+     * Update flow: check backend for latest release.
+     * - If no update: "You're using the latest version."
+     * - If optional: show Update / Later dialog, download + install on Update.
+     * - If required: show mandatory non-dismissible screen, user must update.
      */
-    private void showUpdateNotice(boolean manual) {
-        if (isFinishing()) return;
-        if (!manual) {
-            if (updateNoticeShown) return;
-            updateNoticeShown = true;
+    private void checkForUpdatesManual() {
+        if (updateDownloading) {
+            toast("Download in progress — please wait");
+            return;
         }
-        String msg = updateMessage.isEmpty()
-                ? ("A new version" + (latestVersion.isEmpty() ? "" : " (" + latestVersion + ")")
-                        + " is available.")
-                : updateMessage;
-        new AlertDialog.Builder(this)
-                .setTitle("Update available")
-                .setMessage(msg + "\n\nYou can keep using the app — updating is optional.")
-                .setCancelable(true)
-                .setPositiveButton("Update Now", (d, w) -> {
-                    try {
-                        if (!updateUrl.isEmpty()) startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(updateUrl)));
-                        else Toast.makeText(this, "Ask admin for the new APK", Toast.LENGTH_LONG).show();
-                    } catch (Exception e) {
-                        Toast.makeText(this, "Invalid update URL", Toast.LENGTH_SHORT).show();
+        toast("Checking for updates...");
+        net.execute(() -> {
+            try {
+                JSONObject info = ApkUpdateManager.checkForUpdate(MainActivity.this);
+                if (info == null) {
+                    main.post(() -> toast("You're using the latest version"));
+                    return;
+                }
+                final String verName = info.optString("versionName", "");
+                final int verCode = info.optInt("versionCode", 0);
+                final boolean required = info.optBoolean("updateRequired", false);
+                final String notes = info.optString("releaseNotes", "");
+                final String downloadUrl = info.optString("downloadUrl", "");
+                final String apkFile = info.optString("apkFileName", "update.apk");
+                main.post(() -> {
+                    updateVersionCode = verCode;
+                    updateRequired = required;
+                    if (required) {
+                        showRequiredUpdate(verName, notes, downloadUrl, apkFile);
+                    } else {
+                        showOptionalUpdate(verName, verCode, notes, downloadUrl, apkFile);
                     }
-                })
+                });
+            } catch (Exception e) {
+                main.post(() -> toast("Update check failed: offline"));
+            }
+        });
+    }
+
+    private void showOptionalUpdate(String verName, int verCode, String notes, String downloadUrl, String apkFile) {
+        if (isFinishing()) return;
+        StringBuilder msg = new StringBuilder("New Update Available\n\nVersion ").append(verName);
+        if (!notes.isEmpty()) msg.append("\n\nRelease Notes:\n").append(notes);
+        new AlertDialog.Builder(this)
+                .setTitle("Update Available")
+                .setMessage(msg.toString())
+                .setCancelable(false)
+                .setPositiveButton("Update Now", (d, w) -> startDownload(downloadUrl, apkFile))
                 .setNegativeButton("Later", null)
                 .show();
     }
 
-    /** Manual update check for the navigation drawer. */
-    private void checkForUpdatesManual() {
-        toast("Checking for updates...");
-        net.execute(() -> {
-            try {
-                String installed = ApiClient.appVersion(MainActivity.this);
-                int installedCode = ApiClient.appVersionCode(MainActivity.this);
-                ApiClient.Resp ver = ApiClient.get(this,
-                    "/api/versions/check?platform=android&version=" + installed + "&versionCode=" + installedCode, false);
-                boolean avail = ver.ok() && ver.json.optBoolean("updateAvailable", false);
-                if (avail) {
-                    updateAvailable = true;
-                    updateUrl = ver.json.optString("updateUrl", "");
-                    updateMessage = ver.json.optString("message", "");
-                    latestVersion = ver.json.optString("latestVersion", "");
-                    main.post(() -> showUpdateNotice(true));
+    private void showRequiredUpdate(String verName, String notes, String downloadUrl, String apkFile) {
+        if (isFinishing()) return;
+        StringBuilder msg = new StringBuilder("Update Required\n\nA new version of the app is available.\nYou must update the app to continue.\n\nVersion ").append(verName);
+        if (!notes.isEmpty()) msg.append("\n\nRelease Notes:\n").append(notes);
+        new AlertDialog.Builder(this)
+                .setTitle("Update Required")
+                .setMessage(msg.toString())
+                .setCancelable(false)
+                .setPositiveButton("Update Now", (d, w) -> startDownload(downloadUrl, apkFile))
+                .setNegativeButton(null, null)
+                .show();
+    }
+
+    private void startDownload(String downloadUrl, String apkFile) {
+        if (updateDownloading) return;
+        updateDownloading = true;
+        updateApkPath = null;
+        toast("Downloading update...");
+        ApkUpdateManager.downloadApk(this, downloadUrl, apkFile, (result, success) -> {
+            main.post(() -> {
+                updateDownloading = false;
+                if (success && result != null) {
+                    updateApkPath = result;
+                    ApkUpdateManager.installApk(MainActivity.this, result);
                 } else {
-                    main.post(() -> toast("You're on the latest version"));
+                    toast(success ? "Download failed" : "Download error: " + result);
                 }
-            } catch (Exception e) {
-                main.post(() -> toast("Update check failed: offline"));
-            }
+            });
         });
     }
 
