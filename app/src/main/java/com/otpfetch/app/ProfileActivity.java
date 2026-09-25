@@ -1,6 +1,8 @@
 package com.otpfetch.app;
 
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.os.Bundle;
 import android.widget.Button;
 import android.widget.EditText;
@@ -21,9 +23,10 @@ import java.util.concurrent.Executors;
 public class ProfileActivity extends AppCompatActivity {
 
     private final ExecutorService net = Executors.newSingleThreadExecutor();
-    private TextView usernameView, infoView;
+    private TextView usernameView, infoView, referralStatus;
     private EditText currentPassInput, newPassInput, confirmPassInput;
-    private Button changeBtn, backBtn, signOutBtn;
+    private Button changeBtn, backBtn, signOutBtn, referralCopyBtn, referralShareBtn, referralRefreshBtn;
+    private String referralCode = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +39,10 @@ public class ProfileActivity extends AppCompatActivity {
         setContentView(R.layout.activity_profile);
         usernameView = findViewById(R.id.profileUsername);
         infoView = findViewById(R.id.profileInfo);
+        referralStatus = findViewById(R.id.referralStatus);
+        referralCopyBtn = findViewById(R.id.referralCopyBtn);
+        referralShareBtn = findViewById(R.id.referralShareBtn);
+        referralRefreshBtn = findViewById(R.id.referralRefreshBtn);
         currentPassInput = findViewById(R.id.currentPassInput);
         newPassInput = findViewById(R.id.newPassInput);
         confirmPassInput = findViewById(R.id.confirmPassInput);
@@ -55,6 +62,10 @@ public class ProfileActivity extends AppCompatActivity {
         }
         usernameView.setText(username.isEmpty() ? "—" : username);
         infoView.setText(info);
+        referralCopyBtn.setOnClickListener(v -> copyReferralCode());
+        referralShareBtn.setOnClickListener(v -> shareReferralCode());
+        referralRefreshBtn.setOnClickListener(v -> loadReferral());
+        loadReferral();
 
         changeBtn.setOnClickListener(v -> changePassword());
         if (backBtn != null) backBtn.setOnClickListener(v -> finish());
@@ -69,6 +80,69 @@ public class ProfileActivity extends AppCompatActivity {
                 startActivity(i);
                 finish();
             }).show());
+    }
+
+    private void loadReferral() {
+        referralStatus.setText("Loading referral details...");
+        UiBusy.setBusy(referralRefreshBtn, "Loading...");
+        net.execute(() -> {
+            try {
+                ApiClient.Resp r = ApiClient.get(this, "/api/referrals/me", true);
+                runOnUiThread(() -> {
+                    UiBusy.setIdle(referralRefreshBtn, "Refresh referral status");
+                    if (r.code == 401) {
+                        referralStatus.setText("Your session expired. Please sign in again.");
+                        return;
+                    }
+                    if (!r.ok()) {
+                        referralStatus.setText(r.json.optString("error", "Could not load referral details."));
+                        return;
+                    }
+                    JSONObject referral = r.json.optJSONObject("referral");
+                    if (referral == null) {
+                        referralStatus.setText("Referral details are unavailable.");
+                        return;
+                    }
+                    referralCode = referral.optString("referralCode", "");
+                    int completed = referral.optInt("successfulReferralCount", 0);
+                    int required = referral.optInt("requiredReferrals", 4);
+                    int remaining = referral.optInt("remainingReferrals", required);
+                    int rewards = referral.optInt("totalRewards", 0);
+                    String expiry = referral.optString("freeTrialExpiresAt", "");
+                    String line = completed + " / " + required + " referrals completed";
+                    if (remaining > 0) line += "\nInvite " + remaining + " more users to unlock " + referral.optInt("rewardDays", 5) + " days free";
+                    else line += "\nReward unlocked: +" + referral.optInt("rewardDays", 5) + " days free";
+                    line += "\nCode: " + (referralCode.isEmpty() ? "Unavailable" : referralCode);
+                    line += "\nRewards granted: " + rewards;
+                    if (!expiry.isEmpty()) line += "\nFree access through: " + expiry.substring(0, Math.min(10, expiry.length()));
+                    String rewardMessage = referral.optString("rewardMessage", "");
+                    if (!rewardMessage.isEmpty()) line = rewardMessage + "\n" + line;
+                    referralStatus.setText(line);
+                    referralCopyBtn.setEnabled(!referralCode.isEmpty());
+                    referralShareBtn.setEnabled(!referralCode.isEmpty());
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    UiBusy.setIdle(referralRefreshBtn, "Refresh referral status");
+                    referralStatus.setText("Could not load referral details. Check your connection and retry.");
+                });
+            }
+        });
+    }
+
+    private void copyReferralCode() {
+        if (referralCode.isEmpty()) return;
+        ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Referral code", referralCode));
+        toast("Referral code copied");
+    }
+
+    private void shareReferralCode() {
+        if (referralCode.isEmpty()) return;
+        Intent share = new Intent(Intent.ACTION_SEND);
+        share.setType("text/plain");
+        share.putExtra(Intent.EXTRA_TEXT, "Join the app using my referral code: " + referralCode);
+        startActivity(Intent.createChooser(share, "Share referral"));
     }
 
     private void changePassword() {

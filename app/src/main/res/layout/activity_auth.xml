@@ -53,6 +53,17 @@
             android:padding="10dp"
             android:textSize="14sp" />
 
+        <EditText
+            android:id="@+id/referralCodeInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_input"
+            android:hint="Referral code (optional)"
+            android:inputType="textCapCharacters"
+            android:padding="10dp"
+            android:textSize="14sp" />
+
         <Button
             android:id="@+id/loginBtn"
             android:layout_width="match_parent"

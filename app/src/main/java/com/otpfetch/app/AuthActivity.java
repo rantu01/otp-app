@@ -35,7 +35,7 @@ import java.util.concurrent.Executors;
 public class AuthActivity extends AppCompatActivity {
 
     private final ExecutorService net = Executors.newSingleThreadExecutor();
-    private EditText loginInput, nameInput, passInput;
+    private EditText loginInput, nameInput, passInput, referralCodeInput;
     private TextView hintView;
     private LinearLayout formBox;
     private Button loginBtn, registerBtn;
@@ -48,6 +48,7 @@ public class AuthActivity extends AppCompatActivity {
         loginInput = findViewById(R.id.loginInput);
         nameInput = findViewById(R.id.nameInput);
         passInput = findViewById(R.id.passInput);
+        referralCodeInput = findViewById(R.id.referralCodeInput);
         hintView = findViewById(R.id.authHint);
         formBox = findViewById(R.id.authForm);
         loginBtn = findViewById(R.id.loginBtn);
@@ -182,6 +183,8 @@ public class AuthActivity extends AppCompatActivity {
                     if (login.contains("@")) body.put("email", login);
                     else body.put("phone", login);
                     body.put("name", name.isEmpty() ? login.split("@")[0] : name);
+                    String referralCode = referralCodeInput.getText().toString().trim();
+                    if (!referralCode.isEmpty()) body.put("referralCode", referralCode);
                     ApiClient.Resp r = ApiClient.post(this, "/api/auth/register", body, false);
                     resp = r.json;
                     code = r.code;

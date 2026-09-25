@@ -28,7 +28,7 @@ import java.util.concurrent.Executors;
 public class ActivationActivity extends AppCompatActivity {
 
     private final ExecutorService net = Executors.newSingleThreadExecutor();
-    private EditText loginInput, passInput;
+    private EditText loginInput, passInput, referralCodeInput;
     private TextView hintView;
     private Button loginBtn, registerBtn, exitBtn;
     private boolean routing = false;
@@ -39,6 +39,7 @@ public class ActivationActivity extends AppCompatActivity {
         setContentView(R.layout.activity_activation);
         loginInput = findViewById(R.id.loginInput);
         passInput = findViewById(R.id.passInput);
+        referralCodeInput = findViewById(R.id.referralCodeInput);
         hintView = findViewById(R.id.actHint);
         loginBtn = findViewById(R.id.loginBtn);
         registerBtn = findViewById(R.id.registerBtn);
@@ -122,6 +123,8 @@ public class ActivationActivity extends AppCompatActivity {
                 if (login.contains("@")) body.put("email", login);
                 else body.put("phone", login);
                 body.put("password", pass);
+                String referralCode = referralCodeInput.getText().toString().trim();
+                if (!referralCode.isEmpty()) body.put("referralCode", referralCode);
                 ApiClient.Resp r = ApiClient.post(this, "/api/auth/register", body, false);
                 if (!r.ok()) throw new AuthFailed(r.code, r.json.optString("error", "Register failed"));
                 JSONObject user = r.json.optJSONObject("user");
